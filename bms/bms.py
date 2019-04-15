@@ -7,17 +7,17 @@ import time
 ADDR_NAU = 0x2a
 TCA = {
     0x70: {
-        # 0: { 'offset': 0.0 },
-        1: { 'offset': -0.012 },
-        2: { 'offset': -0.077 },
-        # 3: { 'offset': 0.0 },
+        0: { 'offset': -0.055 },
+        1: { 'offset': -0.043 },
+        2: { 'offset': -0.059 },
+        3: { 'offset': -0.078 },
     },
-    # 0x71: {
-    #     0: { 'offset': 0.0 },
-    #     1: { 'offset': 0.0 },
-    #     2: { 'offset': 0.0 },
-    #     3: { 'offset': 0.0 },
-    # },
+    0x71: {
+        0: { 'offset': -0.036 },
+        1: { 'offset': -0.058 },
+        2: { 'offset': 0.010 },
+        3: { 'offset': 0.011 },
+    },
     # 0x72: {
     #     0: { 'offset': 0.0 },
     #     1: { 'offset': 0.0 },
@@ -49,8 +49,8 @@ def nau_setup(bus):
     return True
 
 def get_reading(bus):
-    bus.write_byte_data(ADDR_NAU, 0x00, 0x96) # start cycle
-    time.sleep(0.5)
+    # bus.write_byte_data(ADDR_NAU, 0x00, 0x96) # start cycle
+    # time.sleep(0.5)
     bus.write_byte(ADDR_NAU, 0x00)
     data = bus.read_byte(ADDR_NAU)
     if (data & 0x20) == 0:
@@ -65,9 +65,9 @@ def get_reading(bus):
     return ((b2 << 16) + (b1 << 8) + b0)
 
 def main():
-    ch = int(sys.argv[1])
-    print "Using bus %d" % ch
-    bus = smbus.SMBus(ch % 2)
+    # ch = int(sys.argv[1])
+    # print "Using bus %d" % ch
+    bus = smbus.SMBus(1)
 
     # Set up ADCs
     for addr in TCA:
@@ -120,6 +120,9 @@ def main():
                 bus.write_byte(addr, 1 << ch)
                 r = get_reading(bus)
                 TCA[addr][ch]['v2'] = 9 * float(r) / float(2**24)
+
+            # Disable all channels before moving on to next TCA
+            bus.write_byte(addr, 0)
 
         for addr in TCA:
             for ch in TCA[addr]:
