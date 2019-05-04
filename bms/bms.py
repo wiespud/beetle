@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import smbus
-import sys
-import time
 
 import batteries
 
