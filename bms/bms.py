@@ -4,34 +4,39 @@ import smbus
 import sys
 import time
 
+BUS = 1
+ADDR = 0
+CH = 0
+ITERATION = 0
+
 # 1-8  is at 6.925
 # 9-16 is at 6.945
 
 ADDR_NAU = 0x2a
 TCA = {
     0x70: {
-        0: { 'offset': -0.065 },
-        1: { 'offset': -0.050 },
-        2: { 'offset': -0.075 },
-        3: { 'offset': -0.077 },
+        0: { 'offset': -0.064 }, # 6.92
+        1: { 'offset': -0.049 }, # 6.92
+        2: { 'offset': -0.071 }, # 6.92
+        3: { 'offset': -0.070 }, # 6.92
     },
     0x71: {
-        0: { 'offset': -0.074 },
-        1: { 'offset': -0.057 },
-        2: { 'offset': -0.022 },
-        3: { 'offset': -0.013 },
+        0: { 'offset': -0.074 }, # 6.92
+        1: { 'offset': -0.048 }, # 6.92
+        2: { 'offset': -0.022 }, # 6.92
+        3: { 'offset': -0.012 }, # 6.92
     },
     0x72: {
-        0: { 'offset': -0.027 },
-        1: { 'offset': -0.032 },
-        2: { 'offset': -0.019 },
-        3: { 'offset': -0.004 },
+        0: { 'offset': -0.019 }, # 6.95
+        1: { 'offset': -0.032 }, # 6.95
+        2: { 'offset': -0.023 }, # 6.95
+        3: { 'offset': -0.015 }, # 6.94
     },
     0x73: {
-        0: { 'offset': -0.000 },
-        1: { 'offset': 0.003 },
-        2: { 'offset': -0.015 },
-        3: { 'offset': 0.010 },
+        0: { 'offset': -0.060 }, # 6.93
+        1: { 'offset': -0.028 }, # 6.94
+        2: { 'offset': -0.102 }, # 6.94
+        3: { 'offset': -0.014 }, # 6.93
     },
 }
 
@@ -43,7 +48,7 @@ def nau_setup(bus):
     bus.write_byte(ADDR_NAU, 0x00) # read register 0
     data = bus.read_byte(ADDR_NAU)
     if (data & 0x08) == 0:
-        print "Power up timed out"
+        print 'Power up timed out'
         return False
     bus.write_byte_data(ADDR_NAU, 0x00, 0x82) # internal LDO, power up digital
     bus.write_byte_data(ADDR_NAU, 0x01, 0x01) # PGA gain 2x for temperature sensor
@@ -52,12 +57,10 @@ def nau_setup(bus):
     return True
 
 def get_reading(bus):
-    # bus.write_byte_data(ADDR_NAU, 0x00, 0x96) # start cycle
-    # time.sleep(0.5)
     bus.write_byte(ADDR_NAU, 0x00)
     data = bus.read_byte(ADDR_NAU)
     if (data & 0x20) == 0:
-        print "Cycle not ready"
+        print 'Cycle not ready'
         sys.exit(1)
     bus.write_byte(ADDR_NAU, 0x12)
     b2 = bus.read_byte(ADDR_NAU)
@@ -77,30 +80,38 @@ def print_results():
             v = v1 + v2 + TCA[addr][ch]['offset']
             print 'TCA 0x%02X, ch %d: t=%.1f v=%.3f (v1=%.3f v2=%.3f)' % (addr, ch, t, v, v1, v2)
 
-def main():
-    # ch = int(sys.argv[1])
-    # print "Using bus %d" % ch
-    bus = smbus.SMBus(1)
-
+def setup(bus):
+    global ADDR
+    global CH
     # Make sure all switches are disabled to start with
     for addr in TCA:
+        ADDR = addr
         for ch in TCA[addr]:
+            CH = ch
             bus.write_byte(addr, 0)
 
     # Set up ADCs
     for addr in TCA:
+        ADDR = addr
         for ch in TCA[addr]:
+            CH = ch
             bus.write_byte(addr, 1 << ch)
             if not nau_setup(bus):
-                print "Setup failed on TCA 0x%02X, ch %d" % (addr, ch)
+                print 'Setup failed on TCA 0x%02X, ch %d' % (addr, ch)
                 sys.exit(1)
         bus.write_byte(addr, 0)
 
+def monitor(bus):
+    global ADDR
+    global CH
+    global ITERATION
     first_pass = True
     phase = 2 # 0=temp, 1=ch1, 2=ch2
     while True:
         for addr in TCA:
+            ADDR = addr
             for ch in TCA[addr]:
+                CH = ch
                 bus.write_byte(addr, 1 << ch)
 
                 # Collect reading from previous iteration
@@ -139,6 +150,25 @@ def main():
 
         # Next phase
         phase = (phase + 1) % 3
+        
+        ITERATION += 1
 
-if __name__== "__main__":
+def main():
+    global ADDR
+    global CH
+    global ITERATION
+
+    bus = smbus.SMBus(BUS)
+
+    try:
+        setup(bus)
+        monitor(bus)
+    except IOError:
+        print 'TCA 0x%02X, ch %d, iteration %d' % (ADDR, CH, ITERATION)
+        raise
+    except KeyboardInterrupt:
+        print '\nResetting to initial state'
+        setup(bus)
+
+if __name__== '__main__':
     main()
