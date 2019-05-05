@@ -35,6 +35,17 @@ def temperature_setup(bus):
     bus.write_byte_data(ADDR_NAU, 0x1B, 0x00) # PGA bypass disable
     bus.write_byte_data(ADDR_NAU, 0x11, 0x02) # Switch to temperature sensor
 
+def voltage_setup(bus, ch):
+    bus.write_byte_data(ADDR_NAU, 0x1B, 0x10) # PGA bypass enable
+    bus.write_byte_data(ADDR_NAU, 0x11, 0x00) # Switch to inputs
+    if ch == 1:
+        bus.write_byte_data(ADDR_NAU, 0x02, 0x00) # Ch1
+    elif ch == 2:
+        bus.write_byte_data(ADDR_NAU, 0x02, 0x80) # Ch2
+    else:
+        print 'ERROR: Invalid channel %s for NAU7802SGI' % ch
+        raise OSError
+
 def voltage_setup_1(bus):
     bus.write_byte_data(ADDR_NAU, 0x1B, 0x10) # PGA bypass enable
     bus.write_byte_data(ADDR_NAU, 0x11, 0x00) # Switch to inputs

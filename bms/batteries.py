@@ -12,7 +12,7 @@ BATTERIES = {
         0: (1, 1, -0.064),
         1: (1, 2, -0.049),
         2: (1, 3, -0.071),
-        3: (1, 4, -0.070),
+        3: (1, 4, -0.074),
     },
     0x71: {
         0: (1, 5, -0.074),
@@ -21,22 +21,22 @@ BATTERIES = {
         3: (1, 8, -0.012),
     },
     0x72: {
-        # 0: (2,  9, -0.017),
-        # 1: (2, 10, -0.029),
+        0: (2,  9, -0.017),
+        1: (2, 10, -0.029),
         2: (2, 11, -0.021),
         3: (2, 12, -0.013),
     },
     0x73: {
         0: (2, 13, -0.060),
-        1: (2, 14, -0.024),
-        2: (2, 15, -0.109),
+        1: (2, 14, -0.029),
+        2: (2, 15, -0.103),
         3: (2, 16, -0.016),
     },
 }
 
 class Battery:
     ''' A single battery group corresponding to one BMS board '''
-    def __init__(self, pack, group, bus, address, channel, offset, count):
+    def __init__(self, pack, group, bus, address, channel, offset, count, limit=0.5):
         self.pack = pack
         self.group = group
         self.bus = bus
@@ -44,9 +44,11 @@ class Battery:
         self.channel = channel
         self.offset = offset
         self.count = count
+        self.limit = limit
+        self.error = False
+        self.errors = [] # Append True if a measurement had an error
         self.temperatures = []
-        self.voltages_1 = []
-        self.voltages_2 = []
+        self.voltages = { 1: [], 2: [] }
         tca.select(bus, address, channel)
         if not nau.chip_setup(bus):
             print 'ERROR: Chip setup failed on %s' % self
@@ -67,57 +69,67 @@ class Battery:
         return sum(self.temperatures) / float(len(self.temperatures))
 
     def get_last_voltage(self):
-        return self.voltages_1[-1] + self.voltages_2[-1] + self.offset
+        return self.voltages[1][-1] + self.voltages[2][-1] + self.offset
 
     def get_average_voltage(self):
-        average_1 = sum(self.voltages_1) / float(len(self.voltages_1))
-        average_2 = sum(self.voltages_2) / float(len(self.voltages_2))
+        average_1 = sum(self.voltages[1]) / float(len(self.voltages[1]))
+        average_2 = sum(self.voltages[2]) / float(len(self.voltages[2]))
         return average_1 + average_2 + self.offset
 
-    def check_for_faults(self):
-        return False
+    def update_error_history(self):
+        self.errors.append(self.error)
+        if len(self.errors) > self.count:
+            self.errors.pop(0)
+        self.error = False
+
+    def check_error_history(self):
+        ''' Return True if the errors exceed the limit '''
+        errors = sum(1 for error in self.errors if error)
+        return (float(errors) / len(self.errors)) > self.limit
 
     def start_temperature_measurement(self):
         tca.select(self.bus, self.address, self.channel)
-        nau.temperature_setup(self.bus)
-        nau.start_measurement(self.bus)
-        tca.disable(self.bus, self.address)
+        try:
+            nau.temperature_setup(self.bus)
+            nau.start_measurement(self.bus)
+        except IOError:
+            self.error = True
+        tca.disable(self.bus, self.address)    
 
     def finish_temperature_measurement(self):
+        if not self.error:
+            tca.select(self.bus, self.address, self.channel)
+            try:
+                temp = nau.get_temperature(self.bus)
+                self.temperatures.append(temp)
+                if len(self.temperatures) > self.count:
+                    self.temperatures.pop(0)
+            except IOError:
+                self.error = True
+            tca.disable(self.bus, self.address)
+        self.update_error_history()
+
+    def start_voltage_measurement(self, nau_ch):
         tca.select(self.bus, self.address, self.channel)
-        temp = nau.get_temperature(self.bus)
-        self.temperatures.append(temp)
-        if len(self.temperatures) > self.count:
-            self.temperatures.pop(0)
+        try:
+            nau.voltage_setup(self.bus, nau_ch)
+            nau.start_measurement(self.bus)
+        except IOError:
+            self.error = True
         tca.disable(self.bus, self.address)
 
-    def start_voltage_1_measurement(self):
-        tca.select(self.bus, self.address, self.channel)
-        nau.voltage_setup_1(self.bus)
-        nau.start_measurement(self.bus)
-        tca.disable(self.bus, self.address)
-
-    def finish_voltage_1_measurement(self):
-        tca.select(self.bus, self.address, self.channel)
-        volts = nau.get_voltage(self.bus)
-        self.voltages_1.append(volts)
-        if len(self.voltages_1) > self.count:
-            self.voltages_1.pop(0)
-        tca.disable(self.bus, self.address)
-
-    def start_voltage_2_measurement(self):
-        tca.select(self.bus, self.address, self.channel)
-        nau.voltage_setup_2(self.bus)
-        nau.start_measurement(self.bus)
-        tca.disable(self.bus, self.address)
-
-    def finish_voltage_2_measurement(self):
-        tca.select(self.bus, self.address, self.channel)
-        volts = nau.get_voltage(self.bus)
-        self.voltages_2.append(volts)
-        if len(self.voltages_2) > self.count:
-            self.voltages_2.pop(0)
-        tca.disable(self.bus, self.address)
+    def finish_voltage_measurement(self, nau_ch):
+        if not self.error:
+            tca.select(self.bus, self.address, self.channel)
+            try:
+                volts = nau.get_voltage(self.bus)
+                self.voltages[nau_ch].append(volts)
+                if len(self.voltages[nau_ch]) > self.count:
+                    self.voltages[nau_ch].pop(0)
+            except IOError:
+                self.error = True
+            tca.disable(self.bus, self.address)
+        self.update_error_history()
 
 class Batteries:
     ''' All batteries being monitored by the BMS '''
@@ -162,20 +174,19 @@ class Batteries:
                 return battery
 
     def do_measurements(self):
-        try:
-            for battery in self.batteries:
-                battery.start_temperature_measurement()
-            time.sleep(0.5)
-            for battery in self.batteries:
-                battery.finish_temperature_measurement()
-                battery.start_voltage_1_measurement()
-            time.sleep(0.5)
-            for battery in self.batteries:
-                battery.finish_voltage_1_measurement()
-                battery.start_voltage_2_measurement()
-            time.sleep(0.5)
-            for battery in self.batteries:
-                battery.finish_voltage_2_measurement()
-        except IOError:
-            print 'ERROR: %s' % battery
-            raise
+        for battery in self.batteries:
+            battery.start_temperature_measurement()
+        time.sleep(0.5)
+        for battery in self.batteries:
+            battery.finish_temperature_measurement()
+            battery.start_voltage_measurement(1)
+        time.sleep(0.5)
+        for battery in self.batteries:
+            battery.finish_voltage_measurement(1)
+            battery.start_voltage_measurement(2)
+        time.sleep(0.5)
+        for battery in self.batteries:
+            battery.finish_voltage_measurement(2)
+            if battery.check_error_history():
+                print 'ERROR: Exceeded error limit: %s' % battery
+                raise OSError
