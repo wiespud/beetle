@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
 import gpiozero
+import MySQLdb
 import smbus
+import socket
 
 from datetime import datetime
 
@@ -16,13 +18,20 @@ def log_print(str):
 
 def main():
 
-    # Setup EVCC loop control
-    evcc = gpiozero.LED(5)
-    evcc.on()
+    # Setup EVCC loop control if we're running on the back pi
+    location = socket.gethostname().split('-')[1]
+    if location == 'back':
+        evcc = gpiozero.OutputDevice(6, active_high=False)
+        evcc.on()
+        host = 'localhost'
+    else:
+        host = '10.10.10.2'
 
-    # Setup battery heaters
-    heat_front = gpiozero.OutputDevice(22, active_high=False)
-    heat_back = gpiozero.OutputDevice(23, active_high=False)
+    # Setup db connection
+    with open('db_passwd.txt') as fin:
+        passwd = fin.read()
+    db = MySQLdb.connect(host=host, user='beetle', passwd=passwd, db='beetle')
+    cur = db.cursor()
 
     # Setup BMS
     err_str = None
@@ -42,11 +51,14 @@ def main():
             v_av = batt.get_average_voltage()
             id_str = 'Group %2d: t=%.01f (%.01f) v=%.03f (%.03f)' % (g, t, t_av, v, v_av)
             log_print(id_str)
-            #~ if err_str or t_av > 50.0 or v_av > 8.0 or v_av < 6.0:
+            cur.execute('INSERT INTO bms (cell_group, voltage, temperature) '
+                        'VALUES (%d, %.03f, %.01f);' % (g, v, t))
+            #~ if err_str or t_av > 50.0 or v_av > 8.1 or v_av < 6.0:
                 #~ if not err_str:
                     #~ evcc.off()
                     #~ err_str = id_str
                 #~ log_print('ERROR: disabled EVCC because of %s' % err_str)
+        db.commit()
         t_av_av = sum(t_av_list) / float(len(t_av_list))
         t_av_av_list.append(t_av_av)
         if len(t_av_av_list) > 10:
