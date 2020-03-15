@@ -20,6 +20,10 @@ def main():
     evcc = gpiozero.LED(5)
     evcc.on()
 
+    # Setup battery heaters
+    heat_front = gpiozero.OutputDevice(22, active_high=False)
+    heat_back = gpiozero.OutputDevice(23, active_high=False)
+
     # Setup BMS
     err_str = None
     bus = smbus.SMBus(1)
