@@ -3,35 +3,39 @@ import tca
 import nau
 
 BATTERIES = {
-    # TCA I2C address
-    0x70: {
-        # TCA channel
-            # Battery pack number
-               # Battery group number
-                  # Voltage offset
-        0: (1, 1, -0.062), # 6.59
-        1: (1, 2, -0.045), # 6.59
-        2: (1, 3, -0.064), # 6.59
-        3: (1, 4, -0.067), # 6.59
+    'front': {
+        # TCA I2C address
+        0x70: {
+            # TCA channel
+                # Battery pack number
+                   # Battery group number
+                      # Voltage offset
+            0: (1, 1, -0.062), # 6.59
+            1: (1, 2, -0.045), # 6.59
+            2: (1, 3, -0.064), # 6.59
+            3: (1, 4, -0.067), # 6.59
+        },
+        0x71: {
+            0: (1, 5, -0.071), # 6.58
+            1: (1, 6, -0.040), # 6.58
+            2: (1, 7, -0.008), # 6.56
+            # 3: (1, 8, -0.020),
+        },
     },
-    0x71: {
-        0: (1, 5, -0.071), # 6.58
-        1: (1, 6, -0.040), # 6.58
-        2: (1, 7, -0.008), # 6.56
-        # 3: (1, 8, -0.020),
+    'back': {
+        0x72: {
+            0: (2,  9, -0.017), # 6.59
+            1: (2, 10, -0.042), # 6.58
+            2: (2, 11, -0.030), # 6.58
+            3: (2, 12, -0.023), # 6.57
+        },
+        0x73: {
+            0: (2, 13, -0.060), # 6.57
+            1: (2, 14, -0.037), # 6.57
+            2: (2, 15, -0.079), # 6.57
+            3: (2, 16, -0.022), # 6.55
+        },
     },
-#    0x72: {
-#        0: (2,  9, -0.017), # 6.59
-#        1: (2, 10, -0.042), # 6.58
-#        2: (2, 11, -0.030), # 6.58
-#        3: (2, 12, -0.023), # 6.57
-#    },
-#    0x73: {
-#        0: (2, 13, -0.060), # 6.57
-#        1: (2, 14, -0.037), # 6.57
-#        2: (2, 15, -0.079), # 6.57
-#        3: (2, 16, -0.022), # 6.55
-#    },
 }
 
 class Battery:
@@ -135,6 +139,7 @@ class Batteries:
     ''' All batteries being monitored by the BMS '''
     def __init__( self,
                   bus,
+                  location,
                   count=10,
                   under_emergency=0.0,
                   under_error=0.0,
@@ -157,9 +162,9 @@ class Batteries:
         self.temp_error = temp_error
         self.temp_emergency = temp_emergency
         self.batteries = []
-        for address in BATTERIES:
-            for channel in BATTERIES[address]:
-                pack, group, offset = BATTERIES[address][channel]
+        for address in BATTERIES[location]:
+            for channel in BATTERIES[location][address]:
+                pack, group, offset = BATTERIES[location][address][channel]
                 if init_group == 0 or group == init_group:
                     battery = Battery(pack, group, bus, address, channel, offset, count)
                     self.batteries.append(battery)
