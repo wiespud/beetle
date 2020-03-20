@@ -5,8 +5,10 @@ import MySQLdb
 import smbus
 import socket
 import sys
+import time
 
 from datetime import datetime
+from datetime import timedelta
 
 import batteries
 
@@ -14,30 +16,56 @@ HOLDOFF = 15.0 # wait this long for data to accumulate before doing anything
 
 class BatteryMonitoringSystem:
     ''' BMS class '''
-    def __init__(self, logger, cur):
+    def __init__(self, logger, db, location):
         self.logger = logger
-        self.cur = cur
-        self.loop = gpiozero.OutputDevice(6, active_high=False)
-        self.rows = None
+        self.db = db
+        self.cur = db.cursor()
+        self.location = location
         self.init_time = datetime.now()
+        self.bus = smbus.SMBus(1)
+        self.batts = batteries.Batteries(self.bus, location)
+        if location == 'back':
+            self.loop = gpiozero.OutputDevice(6, active_high=False)
+
+    def as_often_as_possible(self):
+        ''' Do these tasks as often as possible '''
+        self.gather()
+        if self.location == 'back':
+            self.process()
+
+    def every_minute(self):
+        ''' Do these tasks once a minute '''
+        self.cleanup()
 
     def gather(self):
+        try:
+            self.batts.do_measurements()
+        except OSError:
+            self.logger.error('measurement(s) failed')
+        else:
+            for batt in self.batts.battery_iter():
+                g = batt.get_group()
+                t = batt.get_last_temperature()
+                t_av = batt.get_average_temperature()
+                v = batt.get_last_voltage()
+                v_av = batt.get_average_voltage()
+                self.cur.execute('INSERT INTO bms (cg, t, t_av, v, v_av) '
+                                 'VALUES (%d, %.01f, %.01f, %.03f, %.03f);' % (g, t, t_av, v, v_av))
+            self.db.commit()
+
+    def process(self):
         if (datetime.now() - self.init_time).total_seconds() < HOLDOFF:
             return
         self.cur.execute('SELECT a.cg, a.ts, a.t_av, a.v_av FROM ( '
-                         'SELECT b.*, ROW_NUMBER() OVER (PARTITION BY cell_group ORDER BY id DESC) AS rn '
+                         'SELECT b.*, ROW_NUMBER() OVER (PARTITION BY cg ORDER BY id DESC) AS rn '
                          'FROM bms AS b ) AS a WHERE rn = 1')
-        self.rows = cur.fetchall()
-
-    def process(self):
-        if self.rows == None:
-            return
+        rows = self.cur.fetchall()
         errors = 0
         now = datetime.now()
-        if len(self.rows) < 15:
+        if len(rows) < 15:
             self.logger.error('missing cell group(s)')
             errors += 1
-        for row in self.rows:
+        for row in rows:
             cg = row[0]
             ts = row[1]
             t_av = row[2]
@@ -60,155 +88,50 @@ class BatteryMonitoringSystem:
             self.logger.info('enabling evcc loop')
             self.loop.on()
 
-    # ~ def cleanup(self):
-        # TODO: average the results into the history table
-
-def poll(location, logger, cur):
-    bus = smbus.SMBus(1)
-    batts = batteries.Batteries(bus, location)
-    while True:
-        try:
-            batts.do_measurements()
-        except OSError:
-            logger.error('measurement(s) failed')
-            break
-        for batt in batts.battery_iter():
-            g = batt.get_group()
-            t = batt.get_last_temperature()
-            t_av = batt.get_average_temperature()
-            v = batt.get_last_voltage()
-            v_av = batt.get_average_voltage()
-            cur.execute('INSERT INTO bms (cell_group, t, t_av, v, v_av) '
-                        'VALUES (%d, %.01f, %.01f, %.03f, %.03f);' % (g, t, t_av, v, v_av))
-        db.commit()
-
-# ~ LOG = open('charge.log', 'a+', buffering=1)
-
-# ~ def log_print(str):
-    # ~ ts = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    # ~ print '%s %s' % (ts, str)
-    # ~ LOG.write('%s %s\n' % (ts, str))
-
-# ~ ON_TEMP = 17.5
-# ~ OFF_TEMP = 18.0
-
-# ~ def heat_control(front_av, back_av, front_heat, back_heat):
-    # ~ if front_temp <= ON_TEMP:
-        # ~ if front_heat.value == 0:
-            # ~ front_heat.on()
-            # ~ log_print('front on')
-    # ~ elif front_temp >= OFF_TEMP:
-        # ~ if front_heat.value == 1:
-            # ~ front_heat.off()
-            # ~ log_print('front off')
-    # ~ if back_temp <= ON_TEMP:
-        # ~ if back_heat.value == 0:
-            # ~ back_heat.on()
-            # ~ log_print('back on')
-    # ~ elif back_temp >= OFF_TEMP:
-        # ~ if back_heat.value == 1:
-            # ~ back_heat.off()
-            # ~ log_print('back off')
-
-# ~ def back_actions(cur, evcc, front_heat, back_heat):
-    # ~ cur.execute('SELECT a.cg, a.ts, a.t_av, a.v_av FROM ( '
-                # ~ 'SELECT b.*, ROW_NUMBER() OVER (PARTITION BY cell_group ORDER BY id DESC) AS rn '
-                # ~ 'FROM bms AS b ) AS a WHERE rn = 1')
-    # ~ now = datetime.now()
-    # ~ rows = cur.fetchall()
-    # ~ errors = 0
-    # ~ t_av_front = []
-    # ~ t_av_back = []
-    # ~ if len(rows) < 15:
-        # ~ log_print('missing cell group(s)')
-        # ~ errors += 1
-    # ~ for row in rows:
-        # ~ g = row[0]
-        # ~ ts = row[1]
-        # ~ t_av = row[2]
-        # ~ v_av = row[3]
-        # ~ if t_av < 0.0 or t_av > 50.0:
-            # ~ log_print('group %d t_av=%.01f' % (group, t_av))
-            # ~ errors += 1
-        # ~ if v_av >= 8.1 or v_av < 6.0:
-            # ~ log_print('group %d v_av=%.03f' % (group, v_av))
-            # ~ errors += 1
-        # ~ last_measurements = (now - ts).total_seconds()
-        # ~ if last_measurements > 60.0 or last_measurements < 0.0:
-            # ~ log_print('group %d last measurements were %.01f seconds ago' % (group, last_measurements))
-            # ~ errors += 1
-        # ~ if g < 9:
-            # ~ t_av_front.append(t_av)
-        # ~ else:
-            # ~ t_av_back.append(t_av)
-    # ~ if errors > 0 and evcc.value == 1:
-        # ~ log_print('disabling evcc due to error(s)')
-        # ~ evcc.off()
-        # ~ sys.exit(1)
-    # ~ t_av_av_front = sum(t_av_front) / float(len(t_av_front))
-    # ~ t_av_av_back = sum(t_av_back) / float(len(t_av_back))
-    # ~ heat_control(t_av_av_front, t_av_av_back, front_heat, back_heat)
-
-# ~ def main():
-
-    # ~ # Setup EVCC loop control if we're running on the back pi
-    # ~ location = socket.gethostname().split('-')[1]
-    # ~ if location == 'back':
-        # ~ evcc = gpiozero.OutputDevice(6, active_high=False)
-        # ~ evcc.on()
-        # ~ front_heat = gpiozero.OutputDevice(22, active_high=False)
-        # ~ back_heat = gpiozero.OutputDevice(23, active_high=False)
-        # ~ host = 'localhost'
-    # ~ else:
-        # ~ host = '10.10.10.2'
-
-    # ~ # Setup db connection
-    # ~ with open('db_passwd.txt') as fin:
-        # ~ passwd = fin.read()
-    # ~ db = MySQLdb.connect(host=host, user='beetle', passwd=passwd, db='beetle')
-    # ~ cur = db.cursor()
-
-    # ~ # Setup BMS
-    # ~ err_str = None
-    # ~ bus = smbus.SMBus(1)
-    # ~ batts = batteries.Batteries(bus, location)
-    # ~ t_av_av_list = []
-    # ~ holdoff = 5
-    # ~ while True:
-        # ~ t_av_list = []
-        # ~ print ''
-        # ~ try:
-            # ~ batts.do_measurements()
-        # ~ except OSError:
-            # ~ if location == 'back':
-                # ~ evcc.off()
-                # ~ log_print('disabling evcc due to measurement error(s)')
-            # ~ log_print('exiting due to measurement error(s)')
-            # ~ sys.exit(1)
-        # ~ for batt in batts.battery_iter():
-            # ~ g = batt.get_group()
-            # ~ t = batt.get_last_temperature()
-            # ~ t_av = batt.get_average_temperature()
-            # ~ t_av_list.append(t_av)
-            # ~ v = batt.get_last_voltage()
-            # ~ v_av = batt.get_average_voltage()
-            # ~ id_str = 'Group %2d: t=%.01f (%.01f) v=%.03f (%.03f)' % (g, t, t_av, v, v_av)
-            # ~ log_print(id_str)
-            # ~ cur.execute('INSERT INTO bms (cell_group, t, t_av, v, v_av) '
-                        # ~ 'VALUES (%d, %.01f, %.01f, %.03f, %.03f);' % (g, t, t_av, v, v_av))
-        # ~ db.commit()
-
-        # ~ t_av_av = sum(t_av_list) / float(len(t_av_list))
-        # ~ t_av_av_list.append(t_av_av)
-        # ~ if len(t_av_av_list) > 10:
-            # ~ t_av_av_list.pop(0)
-        # ~ t_av_av_av = sum(t_av_av_list) / float(len(t_av_av_list))
-        # ~ log_print('t_av %0.1f' % t_av_av_av)
-
-        # ~ if location == 'back' and holdoff == 0:
-            # ~ back_actions(cur, evcc, front_heat, back_heat)
-        # ~ else:
-            # ~ holdoff -= 1
-
-# ~ if __name__== '__main__':
-    # ~ main()
+    def cleanup(self):
+        self.cur.execute('SELECT MIN(ts), MAX(ts) FROM bms')
+        rows = self.cur.fetchall()
+        min_ts = rows[0][0]
+        max_ts = rows[0][1]
+        if min_ts == None or max_ts == None:
+            return
+        if min_ts.minute == max_ts.minute:
+            return
+        match_ts = datetime(min_ts.year, min_ts.month, min_ts.day, min_ts.hour, min_ts.minute, 0)
+        while (max_ts - match_ts).total_seconds() > 60.0:
+            match_ts_str = '%s' % match_ts
+            match_ts_str = match_ts_str[:-3]
+            front_t_arr = []
+            back_t_arr = []
+            v_arr = []
+            self.cur.execute('SELECT cg, AVG(t), AVG(v) FROM bms '
+                             'WHERE ts LIKE \'%s%%\' GROUP BY cg' % match_ts_str)
+            rows = self.cur.fetchall()
+            if len(rows) > 0:
+                for row in rows:
+                    cg = row[0]
+                    t = row[1]
+                    v = row[2]
+                    if cg < 9:
+                        front_t_arr.append(t)
+                    else:
+                        back_t_arr.append(t)
+                    v_arr.append(v)
+                if len(front_t_arr) > 0:
+                    front_t_av = sum(front_t_arr) / float(len(front_t_arr))
+                else:
+                    front_t_av = 0.0
+                if len(back_t_arr) > 0:
+                    back_t_av = sum(back_t_arr) / float(len(back_t_arr))
+                else:
+                    back_t_av = 0.0
+                v_av = sum(v_arr) / float(len(v_arr))
+                v = sum(v_arr)
+                v_min = min(v_arr)
+                v_max = max(v_arr)
+                self.cur.execute('INSERT INTO history (front_t_av, back_t_av, v, v_av, v_min, v_max) '
+                                 'VALUES (%.01f, %.01f, %.03f, %.03f, %.03f, %.03f);' % (front_t_av,
+                                 back_t_av, v, v_av, v_min, v_max))
+                self.cur.execute('DELETE FROM bms WHERE ts LIKE \'%s%%\'' % match_ts_str)
+            match_ts += timedelta(0, 60)
+        self.db.commit()

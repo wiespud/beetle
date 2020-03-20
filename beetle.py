@@ -23,7 +23,7 @@ def setup_logger(name):
     logger.addHandler(handler)
     return logger
 
-def setup_db_cur(location):
+def setup_db(location):
     if location == 'back':
         host = 'localhost'
     else:
@@ -31,45 +31,43 @@ def setup_db_cur(location):
     with open('db_passwd.txt') as fin:
         passwd = fin.read()
     db = MySQLdb.connect(host=host, user='beetle', passwd=passwd, db='beetle')
-    return db.cursor()
+    return db
 
 class Beetle:
     ''' Integration class for all the components of the car '''
     def __init__(self, location):
         self.location = location
         self.logger = setup_logger('beetle')
-        self.cur = setup_db_cur(location)
-        self.bms = bms.BatteryMonitoringSystem(self.logger, self.cur)
-        self.heat = heating.BatteryHeater(self.logger, self.cur)
+        self.db = setup_db(location)
+        self.cur = self.db.cursor()
+        self.bms = bms.BatteryMonitoringSystem(self.logger, self.db, location)
+        if location == 'back':
+            self.heat = heating.BatteryHeater(self.logger, self.cur)
 
-    def gather(self):
-        ''' Gather information locally and from other pi '''
-        self.bms.gather()
-        # ~ self.heat.gather()
+    def as_often_as_possible(self):
+        ''' Do these tasks as often as possible '''
+        self.bms.as_often_as_possible()
 
-    def process(self):
-        ''' Process gathered information and take actions '''
-        self.bms.process()
-        # ~ self.heat.process()
+    def every_minute(self):
+        ''' Do these tasks once a minute '''
+        self.bms.every_minute()
+        self.heat.every_minute()
 
     def poll(self):
-        ''' Repeat gather and process forever '''
+        ''' Repeat tasks forever at desired frequences '''
+        prev_ts = datetime.now()
         while True:
-            gather()
-            process()
-            time.sleep(5)
+            self.as_often_as_possible()
+            ts = datetime.now()
+            if self.location == 'back' and ts.minute != prev_ts.minute:
+                self.every_minute()
+                prev_ts = ts
 
 def main():
 
     # The location of the pi determines what its responsibilities are.
     # The hostname is beetle-location.
     location = socket.gethostname().split('-')[1]
-
-    # The bms data collection needs to run as a separate process.
-    logger = setup_logger('bms')
-    cur = setup_db_cur(location)
-    bms_proc = Process(target=bms.poll, args=(location, logger, cur,))
-    bms_proc.start()
 
     beetle = Beetle(location)
     beetle.poll()
