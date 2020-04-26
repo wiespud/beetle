@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+'''
+Battery Monitoring System (BMS)
+'''
 
 import gpiozero
 import MySQLdb
@@ -16,7 +18,8 @@ HOLDOFF = 15.0 # wait this long for data to accumulate before doing anything
 
 class BatteryMonitoringSystem:
     ''' BMS class '''
-    def __init__(self, logger, db, location):
+    def __init__(self, beetle, logger, db, location):
+        self.beetle = beetle
         self.logger = logger
         self.db = db
         self.cur = db.cursor()
@@ -74,7 +77,7 @@ class BatteryMonitoringSystem:
                 self.logger.error('group %d t_av=%.01f' % (cg, t_av))
                 errors += 1
             # TODO: allow less than 6 volts if AC present (for charging)
-            if v_av >= 8.1 or v_av < 6.0:
+            if v_av >= 8.1 or (v_av < 6.0 and self.beetle.ac_present.value == 0):
                 self.logger.error('group %d v_av=%.03f' % (cg, v_av))
                 errors += 1
             last_measurements = (now - ts).total_seconds()

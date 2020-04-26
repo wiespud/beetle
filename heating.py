@@ -1,4 +1,6 @@
-#!/usr/bin/env python
+'''
+Interface to monitor battery temperatures and turn on battery heaters
+'''
 
 import gpiozero
 import subprocess

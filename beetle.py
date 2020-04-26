@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import gpiozero
 import logging
 import MySQLdb
 import socket
@@ -40,13 +41,26 @@ class Beetle:
         self.logger = setup_logger('beetle')
         self.db = setup_db(location)
         self.cur = self.db.cursor()
-        self.bms = bms.BatteryMonitoringSystem(self.logger, self.db, location)
         if location == 'back':
             self.heat = heating.BatteryHeater(self.logger, self.cur)
+            self.dash_light = gpiozero.OutputDevice(27, active_high=False)
+            self.dash_light.on() # this turns the light off
+            self.ac_present = gpiozero.InputDevice(4, pull_up=True)
+            self.ignition = gpiozero.InputDevice(24, pull_up=True)
+            self.dcdc = gpiozero.OutputDevice(13, active_high=False)
+        self.bms = bms.BatteryMonitoringSystem(self, self.logger, self.db, location)
 
     def as_often_as_possible(self):
         ''' Do these tasks as often as possible '''
         self.bms.as_often_as_possible()
+        if self.location == 'back':
+            # XXX for now just keep the dcdc on all the time when driving
+            if self.ac_present.value == 0 and self.ignition.value == 1 and self.dcdc.value == 0:
+                self.logger.info('turning on dcdc')
+                self.dcdc.on()
+            elif (self.ac_present.value == 1 or self.ignition.value == 0) and self.dcdc.value == 1:
+                self.logger.info('turning off dcdc')
+                self.dcdc.off()
 
     def every_minute(self):
         ''' Do these tasks once a minute '''
