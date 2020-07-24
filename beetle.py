@@ -47,6 +47,7 @@ class Beetle:
             self.dash_light.on() # this turns the light off
             self.ac_present = gpiozero.InputDevice(4, pull_up=True)
             self.ignition = gpiozero.InputDevice(24, pull_up=True)
+            self.charging = gpiozero.InputDevice(12, pull_up=True)
             self.dcdc = gpiozero.OutputDevice(13, active_high=False)
         self.bms = bms.BatteryMonitoringSystem(self, self.logger, self.db, location)
 
@@ -67,6 +68,8 @@ class Beetle:
         self.bms.every_minute()
         self.heat.every_minute()
 
+        # XXX enable/disable wifi using `sudo ip link set down/up wlan0` based on ac_present and eventually gps maybe?
+
     def poll(self):
         ''' Repeat tasks forever at desired frequences '''
         prev_ts = datetime.now()
@@ -78,6 +81,9 @@ class Beetle:
                 prev_ts = ts
 
 def main():
+
+    # Wait a minute for networking, mysql, etc. to start
+    time.sleep(60)
 
     # The location of the pi determines what its responsibilities are.
     # The hostname is beetle-location.
