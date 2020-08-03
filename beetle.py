@@ -11,6 +11,7 @@ from logging.handlers import RotatingFileHandler
 from multiprocessing import Process
 
 import bms
+import gps
 import heating
 
 def setup_logger(name):
@@ -49,6 +50,8 @@ class Beetle:
             self.ignition = gpiozero.InputDevice(24, pull_up=True)
             self.charging = gpiozero.InputDevice(12, pull_up=True)
             self.dcdc = gpiozero.OutputDevice(13, active_high=False)
+        else: # self.location == 'front':
+            self.gps = gps.GPS(self.logger)
         self.bms = bms.BatteryMonitoringSystem(self, self.logger, self.db, location)
 
     def as_often_as_possible(self):
@@ -62,6 +65,8 @@ class Beetle:
             elif (self.ac_present.value == 1 or self.ignition.value == 0) and self.dcdc.value == 1:
                 self.logger.info('turning off dcdc')
                 self.dcdc.off()
+        else: # self.location == 'front':
+            self.gps.as_often_as_possible()
 
     def every_minute(self):
         ''' Do these tasks once a minute '''
