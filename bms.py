@@ -54,9 +54,9 @@ class BatteryMonitoringSystem:
                 t_av = batt.get_average_temperature()
                 v = batt.get_last_voltage()
                 v_av = batt.get_average_voltage()
-                self.cur.execute('UPDATE bms SET t = %.01f, t_av = %.01f, '
-                                 'v = %.03f, v_av = %.03f WHERE cg = %d;'
-                                 % (t, t_av, v, v_av, g))
+                self.cur.execute('UPDATE bms SET ts = CURRENT_TIMESTAMP, '
+                                 't = %.01f, t_av = %.01f, v = %.03f, v_av = %.03f '
+                                 'WHERE cg = %d;' % (t, t_av, v, v_av, g))
             self.db.commit()
 
     def process(self):
