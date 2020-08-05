@@ -12,8 +12,8 @@ FSPEED_FILE = '/var/www/html/fspeed.txt'
 
 class GPS:
     ''' GSP class '''
-    def __init__(self, logger):
-        self.logger = logger
+    def __init__(self, beetle):
+        self.logger = beetle.logger
         gpsd.connect()
 
     def as_often_as_possible(self):

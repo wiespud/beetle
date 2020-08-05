@@ -15,9 +15,9 @@ HOLDOFF = 90.0 # wait this long for data to accumulate before doing anything
 
 class BatteryHeater:
     ''' Battery heater class '''
-    def __init__(self, logger, cur):
-        self.logger = logger
-        self.cur = cur
+    def __init__(self, beetle):
+        self.logger = beetle.logger
+        self.cur = beetle.cur
         self.front_heat = gpiozero.OutputDevice(22, active_high=False)
         self.back_heat = gpiozero.OutputDevice(23, active_high=False)
         self.front_temp = None

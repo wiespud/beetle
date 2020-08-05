@@ -30,6 +30,16 @@
                 }, 500);
             }
 
+            function button(elem) {
+                var update_elem = document.getElementById(elem.className);
+                update_elem.innerText = elem.id;
+                $.ajax({
+                    url: 'state.php',
+                    type: 'post',
+                    data: { 'name': elem.className, 'value': elem.id }
+                });
+            }
+
         </script>
     </head>
 
@@ -39,6 +49,27 @@
 <h1 class='updateme' txtfile='hspeed.txt'></h1>
 <h2>Speed (filtered)</h2>
 <h1 class='updateme' txtfile='fspeed.txt'></h1>
+<br>
+
+<h2>Charger: <a id='charger'><?php
+$servername = '10.10.10.2';
+$username = 'beetle';
+$password = file_get_contents('/home/pi/db_passwd.txt');
+$dbname = 'beetle';
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+if ($conn->connect_error) {
+    die('Connection failed: ' . $conn->connect_error);
+}
+
+$sql = 'SELECT * FROM state WHERE name = "charger";';
+$result = $conn->query($sql);
+$row = $result->fetch_assoc();
+echo $row['value'];
+$conn->close();
+?></a></h2>
+<button class='charger' id='enabled' onclick='button(this)' style='background-color:silver'>Enable</button>
+<button class='charger' id='disabled' onclick='button(this)' style='background-color:silver'>Disable</button>
 
 </body>
 </html>

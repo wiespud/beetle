@@ -10,7 +10,6 @@ import sys
 import time
 
 from datetime import datetime
-from datetime import timedelta
 
 import batteries
 
@@ -18,16 +17,16 @@ HOLDOFF = 15.0 # wait this long for data to accumulate before doing anything
 
 class BatteryMonitoringSystem:
     ''' BMS class '''
-    def __init__(self, beetle, logger, db, location):
+    def __init__(self, beetle):
         self.beetle = beetle
-        self.logger = logger
-        self.db = db
-        self.cur = db.cursor()
-        self.location = location
+        self.logger = beetle.logger
+        self.db = beetle.db
+        self.cur = self.db.cursor()
+        self.location = beetle.location
         self.init_time = datetime.now()
         self.bus = smbus.SMBus(1)
-        self.batts = batteries.Batteries(self.bus, location)
-        if location == 'back':
+        self.batts = batteries.Batteries(self.bus, self.location)
+        if self.location == 'back':
             self.loop = gpiozero.OutputDevice(6, active_high=False)
 
     def as_often_as_possible(self):
