@@ -16,7 +16,7 @@ class GPS:
         self.logger = beetle.logger
         gpsd.connect()
 
-    def as_often_as_possible(self):
+    def poll(self):
         try:
             packet = gpsd.get_current()
             hspeed = packet.hspeed * 2.237
