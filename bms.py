@@ -3,10 +3,7 @@ Battery Monitoring System (BMS)
 '''
 
 import gpiozero
-import MySQLdb
 import smbus
-import socket
-import sys
 import time
 
 from datetime import datetime
@@ -19,33 +16,45 @@ class BatteryMonitoringSystem:
     ''' BMS class '''
     def __init__(self, beetle):
         self.beetle = beetle
-        self.logger = beetle.logger
-        self.db = beetle.db
-        self.cur = self.db.cursor()
-        self.location = beetle.location
-        self.init_time = datetime.now()
+        self.init_time = time.time()
+        self.last_poll = self.init_time
+        self.last_history = self.init_time
         self.bus = smbus.SMBus(1)
-        self.batts = batteries.Batteries(self.bus, self.location)
-        if self.location == 'back':
+        self.batts = batteries.Batteries(self.bus, self.beetle.location)
+        if self.beetle.location == 'back':
             self.loop = gpiozero.OutputDevice(6, active_high=False)
+        ''' values passed from process() to history() '''
+        self.front_t_av = 0.0
+        self.back_t_av = 0.0
+        self.v = 0.0
+        self.v_av = 0.0
+        self.v_min = 0.0
+        self.v_max = 0.0
+        self.beetle.logger.info('BMS poller initialized')
 
-    def as_often_as_possible(self):
-        ''' Do these tasks as often as possible '''
+    def poll(self):
         self.gather()
-        if self.location == 'back' and (self.beetle.ignition.value == 1 or
-                                        self.beetle.charging.value == 1):
+        self.last_poll = time.time()
+        if self.beetle.location == 'back':
             self.process()
-
-    def every_minute(self):
-        ''' Do these tasks once a minute '''
-        if self.beetle.ignition.value == 0 and self.beetle.charging.value == 0:
-            self.process()
+            ''' record history at a variable rate '''
+            period = 3600.0
+            if self.beetle.gpio.get('ignition') == 1:
+                period = 0.0
+            elif self.beetle.gpio.get('charging') == 1:
+                period = 60.0
+            elif self.beetle.gpio.get('ac_present') == 0:
+                period = 300.0
+            delta = self.last_poll - self.last_history
+            if delta > period or delta < 0.0:
+                self.last_history = self.last_poll
+                self.history()
 
     def gather(self):
         try:
             self.batts.do_measurements()
         except OSError:
-            self.logger.error('measurement(s) failed')
+            self.beetle.logger.error('measurement(s) failed')
         else:
             for batt in self.batts.battery_iter():
                 g = batt.get_group()
@@ -53,20 +62,20 @@ class BatteryMonitoringSystem:
                 t_av = batt.get_average_temperature()
                 v = batt.get_last_voltage()
                 v_av = batt.get_average_voltage()
-                self.cur.execute('UPDATE bms SET ts = CURRENT_TIMESTAMP, '
-                                 't = %.01f, t_av = %.01f, v = %.03f, v_av = %.03f '
-                                 'WHERE cg = %d;' % (t, t_av, v, v_av, g))
-            self.db.commit()
+                self.beetle.cur.execute('UPDATE bms SET ts = CURRENT_TIMESTAMP, '
+                                        't = %.01f, t_av = %.01f, v = %.03f, v_av = %.03f '
+                                        'WHERE cg = %d;' % (t, t_av, v, v_av, g))
+            self.beetle.db.commit()
 
     def process(self):
-        if (datetime.now() - self.init_time).total_seconds() < HOLDOFF:
+        if time.time() - self.init_time < HOLDOFF:
             return
-        self.cur.execute('SELECT cg, ts, t, t_av, v, v_av FROM bms')
-        rows = self.cur.fetchall()
+        self.beetle.cur.execute('SELECT cg, ts, t, t_av, v, v_av FROM bms')
+        rows = self.beetle.cur.fetchall()
         errors = 0
         now = datetime.now()
         if len(rows) < 15:
-            self.logger.error('missing cell group(s)')
+            self.beetle.logger.error('missing cell group(s)')
             errors += 1
         front_t_arr = []
         back_t_arr = []
@@ -79,15 +88,15 @@ class BatteryMonitoringSystem:
             v = row[4]
             v_av = row[5]
             if t_av < 0.0 or t_av > 50.0:
-                self.logger.error('group %d t_av=%.01f' % (cg, t_av))
+                self.beetle.logger.error('group %d t_av=%.01f' % (cg, t_av))
                 errors += 1
             # allow less than 6 volts if AC present (for charging)
             if v_av >= 8.1 or (v_av < 6.0 and self.beetle.ac_present.value == 0):
-                self.logger.error('group %d v_av=%.03f' % (cg, v_av))
+                self.beetle.logger.error('group %d v_av=%.03f' % (cg, v_av))
                 errors += 1
             last_measurements = (now - ts).total_seconds()
             if last_measurements > 60.0 or last_measurements < 0.0:
-                self.logger.error('group %d last measurements were %.01f seconds ago' % (cg, last_measurements))
+                self.beetle.logger.error('group %d last measurements were %.01f seconds ago' % (cg, last_measurements))
                 errors += 1
             if cg < 9:
                 front_t_arr.append(t)
@@ -95,24 +104,26 @@ class BatteryMonitoringSystem:
                 back_t_arr.append(t)
             v_arr.append(v)
         if errors > 0 and self.loop.value == 1:
-            self.logger.error('disabling evcc loop due to error(s)')
+            self.beetle.logger.error('disabling evcc loop due to error(s)')
             self.loop.off()
         elif errors == 0 and self.loop.value == 0:
-            self.logger.info('enabling evcc loop')
+            self.beetle.logger.info('enabling evcc loop')
             self.loop.on()
         if len(front_t_arr) > 0:
-            front_t_av = sum(front_t_arr) / float(len(front_t_arr))
+            self.front_t_av = sum(front_t_arr) / float(len(front_t_arr))
         else:
-            front_t_av = 0.0
+            self.front_t_av = 0.0
         if len(back_t_arr) > 0:
-            back_t_av = sum(back_t_arr) / float(len(back_t_arr))
+            self.back_t_av = sum(back_t_arr) / float(len(back_t_arr))
         else:
-            back_t_av = 0.0
-        v_av = sum(v_arr) / float(len(v_arr))
-        v = sum(v_arr)
-        v_min = min(v_arr)
-        v_max = max(v_arr)
-        self.cur.execute('INSERT INTO history (front_t_av, back_t_av, v, v_av, v_min, v_max) '
-                         'VALUES (%.01f, %.01f, %.03f, %.03f, %.03f, %.03f);' %
-                         (front_t_av, back_t_av, v, v_av, v_min, v_max))
-        self.db.commit()
+            self.back_t_av = 0.0
+        self.v_av = sum(v_arr) / float(len(v_arr))
+        self.v = sum(v_arr)
+        self.v_min = min(v_arr)
+        self.v_max = max(v_arr)
+
+    def history(self):
+        self.beetle.cur.execute('INSERT INTO history (front_t_av, back_t_av, v, v_av, v_min, v_max) '
+                                'VALUES (%.01f, %.01f, %.03f, %.03f, %.03f, %.03f);' %
+                                (self.front_t_av, self.back_t_av, self.v, self.v_av, self.v_min, self.v_max))
+        self.beetle.db.commit()

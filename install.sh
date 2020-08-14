@@ -1,4 +1,4 @@
 #!/bin/bash
 
-scp *.py pi@beetle-front.local:~/
-scp *.py pi@beetle-back.local:~/
+scp *.py pi@beetle-front.local:~/ > /dev/null
+scp *.py pi@beetle-back.local:~/ > /dev/null

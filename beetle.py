@@ -8,7 +8,6 @@ import time
 
 from datetime import datetime
 from logging.handlers import RotatingFileHandler
-from multiprocessing import Process
 
 import bms
 import gps
@@ -41,25 +40,28 @@ class Charger:
         self.beetle = beetle
         self.pin = gpiozero.OutputDevice(5, active_high=False)
         self.last_poll = 0.0
+        self.beetle.logger.info('Charger poller initialized')
 
     def poll(self):
         now = time.time()
         delta = now - self.last_poll
+        if delta < 60.0 and delta > 0.0:
+            return
         self.last_poll = now
-        if delta > 60.0 or delta < 0.0:
-            state = self.beetle.state.get('charger')
-            if (state == 'enabled' and self.pin.value == 0):
-                self.beetle.logger.info('enabling charger')
-                self.pin.on()
-            elif (state == 'disabled' and self.pin.value == 1):
-                self.beetle.logger.info('disabling charger')
-                self.pin.off()
+        state = self.beetle.state.get('charger')
+        if (state == 'enabled' and self.pin.value == 0):
+            self.beetle.logger.info('enabling charger')
+            self.pin.on()
+        elif (state == 'disabled' and self.pin.value == 1):
+            self.beetle.logger.info('disabling charger')
+            self.pin.off()
 
 class DCDC:
     ''' DCDC converter '''
     def __init__(self, beetle):
         self.beetle = beetle
         self.pin = gpiozero.OutputDevice(13, active_high=False)
+        self.beetle.logger.info('DCDC poller initialized')
 
     def poll(self):
         # XXX for now just keep the dcdc on all the time when driving
@@ -81,6 +83,7 @@ class Gpio:
             self.inputs['ac_present'] = GpioInput(4, 'ac_present', beetle)
             self.inputs['ignition'] = GpioInput(24, 'ignition', beetle)
             self.inputs['charging'] = GpioInput(12, 'charging', beetle)
+        self.beetle.logger.info('GPIO poller initialized')
 
     def get(self, name):
         if name in self.inputs:
@@ -91,7 +94,8 @@ class Gpio:
     def poll(self):
         for name in self.inputs:
             new_value = self.inputs[name].pin.value
-            if new_value != self.inputs[name].prev_value:
+            # TODO: check if this gpio has a timeout in the state table
+            if True: # new_value != self.inputs[name].prev_value:
                 self.beetle.state.set(name, new_value)
                 self.inputs[name].prev_value = new_value
 
@@ -116,8 +120,8 @@ class State:
         timeout = row[4]
         last_update = (now - ts).total_seconds()
         if timeout > 0.0 and (last_update > timeout or last_update < 0.0):
-            self.beetle.logger('state variable %s last update was %.01f '
-                               'seconds ago' % (name, last_update))
+            self.beetle.logger.error('state variable %s last update was %.01f '
+                                     'seconds ago' % (name, last_update))
             return None
         else:
             return value
@@ -125,7 +129,7 @@ class State:
     def set(self, name, value):
         self.beetle.cur.execute('UPDATE state SET ts = CURRENT_TIMESTAMP, '
                                 'value = "%s" WHERE name = "%s";' % (value, name))
-        self.db.commit()
+        self.beetle.db.commit()
 
 class WiFi:
     ''' WiFi '''
@@ -133,27 +137,29 @@ class WiFi:
         self.beetle = beetle
         self.last_poll = 0.0
         self.prev_ac_present = 1
+        self.beetle.logger.info('WiFi poller initialized')
 
     def poll(self):
         now = time.time()
         delta = now - self.last_poll
+        if delta < 60.0 and delta > 0.0:
+            return
         self.last_poll = now
-        if delta > 60.0 or delta < 0.0:
-            # XXX for now turn on wifi when ac is present and cellular when not
-            new_ac_present = self.beetle.gpio.get('ac_present')
-            if new_ac_present == 1 and self.prev_ac_present == 0:
-                if self.beetle.location == 'front':
-                    cmd = 'sudo ip link set down usb0'
-                    subprocess.call(cmd, shell=True)
-                cmd = 'sudo ip link set up wlan0'
-                subprocess.call(cmd, shell=True)
-            elif new_ac_present == 0 and self.prev_ac_present == 1:
-                cmd = 'sudo ip link set down wlan0'
-                subprocess.call(cmd, shell=True)
-                if self.beetle.location == 'front':
-                    cmd = 'sudo ip link set up usb0'
-                    subprocess.call(cmd, shell=True)
-            self.prev_ac_present = new_ac_present
+        # XXX for now turn on wifi when ac is present and don't touch cellular
+        new_ac_present = self.beetle.gpio.get('ac_present')
+        if new_ac_present == 1 and self.prev_ac_present == 0:
+            # ~ if self.beetle.location == 'front':
+                # ~ cmd = 'sudo ip link set down usb0'
+                # ~ subprocess.call(cmd, shell=True)
+            cmd = 'sudo ip link set up wlan0'
+            subprocess.call(cmd, shell=True)
+        elif new_ac_present == 0 and self.prev_ac_present == 1:
+            cmd = 'sudo ip link set down wlan0'
+            subprocess.call(cmd, shell=True)
+            # ~ if self.beetle.location == 'front':
+                # ~ cmd = 'sudo ip link set up usb0'
+                # ~ subprocess.call(cmd, shell=True)
+        self.prev_ac_present = new_ac_present
 
 class Beetle:
     ''' Integration class for all the components of the car '''
@@ -162,43 +168,42 @@ class Beetle:
         self.logger = setup_logger('beetle')
         self.db = setup_db(location)
         self.cur = self.db.cursor()
+        self.state = State(self)
         self.pollers = []
         if location == 'back':
-            self.heat = heating.BatteryHeater(self)
+            ''' turn off dash light '''
             self.dash_light = gpiozero.OutputDevice(27, active_high=False)
-            self.dash_light.on() # this turns the light off
+            self.dash_light.on()
+            ''' set up back-only pollers '''
+            self.pollers.append(heating.BatteryHeater(self))
             self.pollers.append(DCDC(self))
             self.pollers.append(Charger(self))
         else: # self.location == 'front':
-            self.gps = gps.GPS(self)
-            self.pollers.append(self.gps)
-        self.pollers.append(WiFi(self))
+            ''' set up front-only pollers '''
+            self.pollers.append(gps.GPS(self))
+        ''' set up common pollers '''
         self.bms = bms.BatteryMonitoringSystem(self)
-        self.state = State(self)
-        self.pollers.append(self.state)
+        self.pollers.append(self.bms)
+        self.pollers.append(WiFi(self))
         self.gpio = Gpio(self)
         self.pollers.append(self.gpio)
 
     def poll(self):
         ''' Repeat tasks forever at desired frequences '''
-        prev_ts = datetime.now()
+        self.logger.info('starting pollers')
         while True:
             for poller in self.pollers:
                 poller.poll()
-            self.bms.as_often_as_possible()
-            ts = datetime.now()
-            if self.location == 'back' and ts.minute != prev_ts.minute:
-                self.bms.every_minute()
-                self.heat.every_minute()
-                prev_ts = ts
 
 if __name__== '__main__':
 
-    # Wait a minute for networking, mysql, etc. to start
+    ''' Wait a minute for networking, mysql, etc. to start '''
     time.sleep(60)
 
-    # The location of the pi determines what its responsibilities are.
-    # The hostname is beetle-location.
+    '''
+    The location of the pi determines what its responsibilities are.
+    Extract it from the hostname which has the format 'beetle-<location>'
+    '''
     location = socket.gethostname().split('-')[1]
 
     beetle = Beetle(location)
