@@ -191,14 +191,23 @@ class Beetle:
     def poll(self):
         ''' Repeat tasks forever at desired frequences '''
         self.logger.info('starting pollers')
+        prev_ts = time.time()
         while True:
             for poller in self.pollers:
                 poller.poll()
+            now = time.time()
+            name = '%s_polling_period' % self.location
+            period = '%.2f' % (now - prev_ts)
+            self.state.set(name, period)
+            prev_ts = now
 
 if __name__== '__main__':
 
-    ''' Wait a minute for networking, mysql, etc. to start '''
-    time.sleep(60)
+    ''' At boot, wait a minute for networking, mysql, etc. to start '''
+    with open('/proc/uptime') as fin:
+        uptime = float(fin.readline().split()[0])
+        if uptime < 60.0:
+            time.sleep(60.0 - uptime)
 
     '''
     The location of the pi determines what its responsibilities are.

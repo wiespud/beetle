@@ -121,6 +121,12 @@ class BatteryMonitoringSystem:
         self.v = sum(v_arr)
         self.v_min = min(v_arr)
         self.v_max = max(v_arr)
+        self.beetle.state.set('front_t_av', '%.2f' % self.front_t_av)
+        self.beetle.state.set('back_t_av', '%.2f' % self.back_t_av)
+        self.beetle.state.set('v', '%.2f' % self.v)
+        self.beetle.state.set('v_av', '%.2f' % self.v_av)
+        self.beetle.state.set('v_min', '%.2f' % self.v_min)
+        self.beetle.state.set('v_max', '%.2f' % self.v_max)
 
     def history(self):
         self.beetle.cur.execute('INSERT INTO history (front_t_av, back_t_av, v, v_av, v_min, v_max) '

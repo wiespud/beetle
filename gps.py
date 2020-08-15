@@ -25,6 +25,8 @@ class GPS:
         try:
             ''' webui as often as possible '''
             packet = gpsd.get_current()
+            position_str = '%.6f,%.9f' % (packet.lat, packet.lon)
+            self.beetle.state.set('location', position_str)
             hspeed = packet.hspeed * 2.237
             with open(HSPEED_FILE, 'w+') as fout:
                 fout.write('%.0f mph' % hspeed)
