@@ -45,7 +45,9 @@ class GPS:
                 return
             self.last_phone_home = now
             with open(LOCATION_FILE, 'w+') as fout:
-                fout.write('<?php header(\'Location: %s\'); ?>' % packet.map_url())
+                map_url = ('https://www.google.com/maps/search/'
+                           '?api=1&query=%s' % position_str)
+                fout.write('<?php header(\'Location: %s\'); ?>' % map_url)
                 fout.flush()
                 os.fsync(fout.fileno())
             cmd = ('scp -P 2222 %s pi@crystalpalace.ddns.net'
