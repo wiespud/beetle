@@ -37,6 +37,17 @@ def setup_db(location):
     db = MySQLdb.connect(host=host, user='beetle', passwd=passwd, db='beetle')
     return db
 
+def at_home(lat, lon):
+    '''
+    west bound: -93.3555
+    east bound: -93.3545
+    north bound: 45.0180
+    south bound: 45.0167
+    '''
+    if lat < 45.0180 and lat > 45.0167 and lon < -93.3545 and lon > -93.3555:
+        return true
+    return false
+
 class Charger:
     ''' Charger '''
     def __init__(self, beetle):
@@ -163,6 +174,11 @@ class PhoneHome:
         if delta < 300.0 and delta > 0.0:
             return
         self.last_phone_home = now
+        '''
+        TODO: Down usb0 and phone home through wifi when at home. This requires
+        figuring out how to programatically enable usb tethering on the Nexus 5
+        since it times out and disables itself when there is no traffic.
+        '''
         self.beetle.cur.execute('SELECT * FROM state')
         rows = self.beetle.cur.fetchall()
         fname = 'state.txt'
@@ -188,7 +204,7 @@ class State:
         value = row[3]
         timeout = row[4]
         last_update = (now - ts).total_seconds()
-        if timeout > 0.0 and (last_update > timeout or last_update < 0.0):
+        if timeout > 0.0 and (last_update > timeout or last_update < -1.0):
             self.beetle.logger.error('state variable %s last update was %.01f '
                                      'seconds ago' % (name, last_update))
             return None
@@ -205,7 +221,6 @@ class WiFi:
     def __init__(self, beetle):
         self.beetle = beetle
         self.last_poll = 0.0
-        self.prev_ac_present = 1
         self.beetle.logger.info('WiFi poller initialized')
 
     def poll(self):
@@ -214,21 +229,32 @@ class WiFi:
         if delta < 60.0 and delta > 0.0:
             return
         self.last_poll = now
-        wifi = self.beetle.state.get('wifi')
-        if 'wifi' == 'always':
+        ''' get current setting and state '''
+        mode = self.beetle.state.get('wifi')
+        lat = self.beetle.state.get('lat')
+        lon = self.beetle.state.get('lon')
+        ac_present = self.beetle.gpio.get('ac_present')
+        cmd = 'ip link show dev wlan0'
+        up = 'state UP' in subprocess.check_output(cmd, shell=True)
+        ''' determine if wlan0 state needs to change '''
+        action = None
+        if mode == 'disabled':
+            if up:
+                action = 'down'
+        elif mode == 'on_ac':
+            if not up and ac_present == 1:
+                action = 'up'
+        elif mode == 'at_home':
+            if not up and at_home(lat, lon):
+                action = 'up'
+        else: # mode == 'always':
+            if not up:
+                action = 'up'
+        ''' change wlan0 state if necessary '''
+        if action == None:
             return
-        # TODO: add mode to enable/disable wifi based on location
-        # TODO: disable usb0 (phone home) connection when at home
-        new_ac_present = self.beetle.gpio.get('ac_present')
-        if new_ac_present == 1 and self.prev_ac_present == 0:
-            if wifi != 'disabled':
-                cmd = 'sudo ip link set up wlan0'
-                subprocess.call(cmd, shell=True)
-        elif new_ac_present == 0 and self.prev_ac_present == 1:
-            if wifi != 'always':
-                cmd = 'sudo ip link set down wlan0'
-                subprocess.call(cmd, shell=True)
-        self.prev_ac_present = new_ac_present
+        cmd = 'sudo ip link set %s wlan0' % action
+        subprocess.call(cmd, shell=True)
 
 class Beetle:
     ''' Integration class for all the components of the car '''
