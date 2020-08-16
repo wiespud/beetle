@@ -18,7 +18,7 @@ class BatteryMonitoringSystem:
         self.beetle = beetle
         self.init_time = time.time()
         self.last_poll = self.init_time
-        self.last_history = self.init_time
+        self.last_history = self.init_time - 3600.0 + HOLDOFF
         self.bus = smbus.SMBus(1)
         self.batts = batteries.Batteries(self.bus, self.beetle.location)
         if self.beetle.location == 'back':
@@ -63,8 +63,9 @@ class BatteryMonitoringSystem:
                 v = batt.get_last_voltage()
                 v_av = batt.get_average_voltage()
                 self.beetle.cur.execute('UPDATE bms SET ts = CURRENT_TIMESTAMP, '
-                                        't = %.01f, t_av = %.01f, v = %.03f, v_av = %.03f '
-                                        'WHERE cg = %d;' % (t, t_av, v, v_av, g))
+                                        't = %.01f, t_av = %.01f, v = %.03f, '
+                                        'v_av = %.03f WHERE cg = %d;' %
+                                        (t, t_av, v, v_av, g))
             self.beetle.db.commit()
 
     def process(self):
@@ -96,7 +97,8 @@ class BatteryMonitoringSystem:
                 errors += 1
             last_measurements = (now - ts).total_seconds()
             if last_measurements > 60.0 or last_measurements < 0.0:
-                self.beetle.logger.error('group %d last measurements were %.01f seconds ago' % (cg, last_measurements))
+                self.beetle.logger.error('group %d last measurements were %.01f '
+                                         'seconds ago' % (cg, last_measurements))
                 errors += 1
             if cg < 9:
                 front_t_arr.append(t)
@@ -129,7 +131,15 @@ class BatteryMonitoringSystem:
         self.beetle.state.set('v_max', '%.2f' % self.v_max)
 
     def history(self):
-        self.beetle.cur.execute('INSERT INTO history (front_t_av, back_t_av, v, v_av, v_min, v_max) '
-                                'VALUES (%.01f, %.01f, %.03f, %.03f, %.03f, %.03f);' %
-                                (self.front_t_av, self.back_t_av, self.v, self.v_av, self.v_min, self.v_max))
+        amps = float(self.beetle.state.get('amps'))
+        charge_wh = float(self.beetle.state.get('charge_wh'))
+        speed = float(self.beetle.state.get('speed'))
+        lat = float(self.beetle.state.get('lat'))
+        lon = float(self.beetle.state.get('lon'))
+        sql = ('INSERT INTO history (front_t_av, back_t_av, v, v_av, v_min, '
+               'v_max, amps, charge_wh, speed, lat, lon) VALUES (%.1f, %.1f, '
+               '%.1f, %.3f, %.3f, %.3f, %.1f, %.1f, %.1f, %.6f, %.9f);' %
+               (self.front_t_av, self.back_t_av, self.v, self.v_av, self.v_min,
+                self.v_max, amps, charge_wh, speed, lat, lon))
+        self.beetle.cur.execute(sql)
         self.beetle.db.commit()

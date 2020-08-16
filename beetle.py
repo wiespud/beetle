@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
 import gpiozero
+import gpsd
 import logging
 import MySQLdb
+import os
 import socket
+import subprocess
 import time
 
 from datetime import datetime
+from geopy.distance import distance
 from logging.handlers import RotatingFileHandler
 
 import bms
-import gps
 import heating
 
 def setup_logger(name):
@@ -49,12 +52,27 @@ class Charger:
             return
         self.last_poll = now
         state = self.beetle.state.get('charger')
-        if (state == 'enabled' and self.pin.value == 0):
+        odometer = float(self.beetle.state.get('charge_odometer'))
+        charging = self.beetle.gpio.get('charging')
+        ''' handle charger disable/enable/one-shot '''
+        # TODO: handle switch gpio that hard-enables charger
+        if state == 'enabled' and self.pin.value == 0:
             self.beetle.logger.info('enabling charger')
             self.pin.on()
-        elif (state == 'disabled' and self.pin.value == 1):
+        elif state == 'disabled' and self.pin.value == 1:
             self.beetle.logger.info('disabling charger')
             self.pin.off()
+        elif state == 'once' and charging == 0:
+            if self.pin.value == 0:
+                self.beetle.logger.info('enabling charger for one charge')
+                self.pin.on()
+            elif self.pin.value == 1:
+                self.beetle.logger.info('charge complete, disabling charger')
+                self.pin.off()
+                self.beetle.state.set('charger', 'disabled')
+        ''' reset charge odometer if a charge is in progress '''
+        if charging == 1 and odometer > 0.0:
+            self.beetle.state.set('charge_odometer', '0.0')
 
 class DCDC:
     ''' DCDC converter '''
@@ -71,7 +89,7 @@ class DCDC:
             self.beetle.logger.info('turning on dcdc')
             self.pin.on()
         elif (ac_present == 1 or ignition == 0) and self.pin.value == 1:
-            self.logger.info('turning off dcdc')
+            self.beetle.logger.info('turning off dcdc')
             self.pin.off()
 
 class Gpio:
@@ -105,6 +123,57 @@ class GpioInput:
         self.pin = gpiozero.InputDevice(pin, pull_up=True)
         self.prev_value = self.pin.value
         beetle.state.set(name, self.prev_value)
+
+class GPS:
+    ''' GSP receiver class '''
+    def __init__(self, beetle):
+        self.beetle = beetle
+        gpsd.connect()
+        self.trip = float(self.beetle.state.get('trip_odometer'))
+        self.charge = float(self.beetle.state.get('charge_odometer'))
+        self.beetle.logger.info('GPS poller initialized')
+
+    def poll(self):
+        try:
+            packet = gpsd.get_current()
+            self.beetle.state.set('lat', '%.6f' % packet.lat)
+            self.beetle.state.set('lon', '%.9f' % packet.lon)
+            speed_str = '%.1f' % (packet.speed() * 2.237)
+            self.beetle.state.set('speed', speed_str)
+            new_position = packet.position()
+            if self.beetle.gpio.get('ignition') == 1:
+                d = distance(new_position, self.position).miles
+                self.trip += d
+                self.charge += d
+                self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
+                self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
+            self.position = new_position
+        except gpsd.NoFixError:
+            self.beetle.logger.error('gps signal too low')
+
+class PhoneHome:
+    ''' Phone home to update remote status '''
+    def __init__(self, beetle):
+        self.beetle = beetle
+        self.last_phone_home = 0.0
+
+    def poll(self):
+        now = time.time()
+        delta = now - self.last_phone_home
+        if delta < 300.0 and delta > 0.0:
+            return
+        self.last_phone_home = now
+        self.beetle.cur.execute('SELECT * FROM state')
+        rows = self.beetle.cur.fetchall()
+        fname = 'state.txt'
+        with open(fname, 'w+') as fout:
+            for row in rows:
+                fout.write('%s\t%s\t%s\t%.1f\n' % (row[1:5]))
+            fout.flush()
+            os.fsync(fout.fileno())
+        cmd = ('scp -P 2222 %s pi@crystalpalace.ddns.net'
+               ':/var/www/html/beetle/%s > /dev/null' % (fname, fname))
+        subprocess.call(cmd, shell=True)
 
 class State:
     ''' State class '''
@@ -145,20 +214,20 @@ class WiFi:
         if delta < 60.0 and delta > 0.0:
             return
         self.last_poll = now
-        # XXX for now turn on wifi when ac is present and don't touch cellular
+        wifi = self.beetle.state.get('wifi')
+        if 'wifi' == 'always':
+            return
+        # TODO: add mode to enable/disable wifi based on location
+        # TODO: disable usb0 (phone home) connection when at home
         new_ac_present = self.beetle.gpio.get('ac_present')
         if new_ac_present == 1 and self.prev_ac_present == 0:
-            # ~ if self.beetle.location == 'front':
-                # ~ cmd = 'sudo ip link set down usb0'
-                # ~ subprocess.call(cmd, shell=True)
-            cmd = 'sudo ip link set up wlan0'
-            subprocess.call(cmd, shell=True)
+            if wifi != 'disabled':
+                cmd = 'sudo ip link set up wlan0'
+                subprocess.call(cmd, shell=True)
         elif new_ac_present == 0 and self.prev_ac_present == 1:
-            cmd = 'sudo ip link set down wlan0'
-            subprocess.call(cmd, shell=True)
-            # ~ if self.beetle.location == 'front':
-                # ~ cmd = 'sudo ip link set up usb0'
-                # ~ subprocess.call(cmd, shell=True)
+            if wifi != 'always':
+                cmd = 'sudo ip link set down wlan0'
+                subprocess.call(cmd, shell=True)
         self.prev_ac_present = new_ac_present
 
 class Beetle:
@@ -180,7 +249,8 @@ class Beetle:
             self.pollers.append(Charger(self))
         else: # self.location == 'front':
             ''' set up front-only pollers '''
-            self.pollers.append(gps.GPS(self))
+            self.pollers.append(GPS(self))
+            self.pollers.append(PhoneHome(self))
         ''' set up common pollers '''
         self.bms = bms.BatteryMonitoringSystem(self)
         self.pollers.append(self.bms)

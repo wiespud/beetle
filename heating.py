@@ -7,8 +7,6 @@ import time
 
 from datetime import datetime
 
-ON_TEMP = 19.5
-OFF_TEMP = 20.0
 HOLDOFF = 90.0 # wait this long for data to accumulate before doing anything
 
 class BatteryHeater:
@@ -46,20 +44,22 @@ class BatteryHeater:
             self.back_heat.off()
             return
         ''' turn heat on or off based on average temperatures from bms '''
-        if self.beetle.bms.front_t_av <= ON_TEMP:
+        on_temp = float(self.beetle.state.get('heat_on_c'))
+        off_temp = float(self.beetle.state.get('heat_off_c'))
+        if self.beetle.bms.front_t_av <= on_temp:
             if self.front_heat.value == 0:
                 self.front_heat.on()
                 self.beetle.logger.info('front heat on')
-        elif self.beetle.bms.front_t_av >= OFF_TEMP:
+        elif self.beetle.bms.front_t_av >= off_temp:
             if self.front_heat.value == 1:
                 self.front_heat.off()
                 self.beetle.logger.info('front heat off')
 
-        if self.beetle.bms.back_t_av <= ON_TEMP:
+        if self.beetle.bms.back_t_av <= on_temp:
             if self.back_heat.value == 0:
                 self.back_heat.on()
                 self.beetle.logger.info('back heat on')
-        elif self.beetle.bms.back_t_av >= OFF_TEMP:
+        elif self.beetle.bms.back_t_av >= off_temp:
             if self.back_heat.value == 1:
                 self.back_heat.off()
                 self.beetle.logger.info('back heat off')
