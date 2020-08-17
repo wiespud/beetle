@@ -8,13 +8,19 @@
 
             function update(state) {
                 var elems = document.getElementsByClassName('updateme');
+                var date = new Date();
+                var now = date.getTime();
                 for (var i = 0; i < elems.length; i++) {
                     var elem = elems[i];
-                    if (state.hasOwnProperty(elem.id)) {
-                        elem.innerText = state[elem.id]['value'];
-                    }
-                    else {
-                        elem.innerText = 'Error';
+                    elem.innerText = state[elem.id]['value'];
+                    var ts = Date.parse(state[elem.id]['ts']);
+                    var timeout = 1000.0 * parseFloat(state[elem.id]['timeout']);
+                    if (timeout > 0.0) {
+                        if (now > ts + timeout) {
+                            elem.style.color = 'red';
+                        } else {
+                            elem.style.color = 'silver';
+                        }
                     }
                 }
             }

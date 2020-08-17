@@ -9,13 +9,21 @@
             function update(state) {
                 // handle updateme class elements
                 var elems = document.getElementsByClassName('updateme');
+                var date = new Date();
+                var now = date.getTime();
                 for (var i = 0; i < elems.length; i++) {
                     var elem = elems[i];
-                    if (state.hasOwnProperty(elem.id)) {
-                        elem.innerText = state[elem.id]['value'];
-                    }
-                    else {
-                        elem.innerText = 'Error';
+                    elem.innerText = state[elem.id]['value'];
+                    var ts = Date.parse(state[elem.id]['ts']);
+                    var timeout = 1000.0 * parseFloat(state[elem.id]['timeout']);
+                    if (timeout > 0.0) {
+                        // Don't use timeout from json since it is only updated
+                        // every 5 minutes. Use a 10 minute timeout instead.
+                        if (now > ts + 600000.0) {
+                            elem.style.color = 'red';
+                        } else {
+                            elem.style.color = 'silver';
+                        }
                     }
                 }
                 // handle location url
