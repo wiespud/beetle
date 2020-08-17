@@ -2,9 +2,9 @@
 $name = $_POST['name'];
 $value = $_POST['value'];
 
-$servername = '10.10.10.2';
+$servername = 'beetle-back.local';
 $username = 'beetle';
-$password = file_get_contents('/home/pi/db_passwd.txt');
+$password = file_get_contents('/home/pi/beetle_db_passwd.txt');
 $dbname = 'beetle';
 
 $conn = new mysqli($servername, $username, $password, $dbname);

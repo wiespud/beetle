@@ -149,7 +149,7 @@ class GPS:
             packet = gpsd.get_current()
             self.beetle.state.set('lat', '%.6f' % packet.lat)
             self.beetle.state.set('lon', '%.9f' % packet.lon)
-            speed_str = '%.1f' % (packet.speed() * 2.237)
+            speed_str = '%.0f' % (packet.speed() * 2.237)
             self.beetle.state.set('speed', speed_str)
             new_position = packet.position()
             if self.beetle.gpio.get('ignition') == 1:
@@ -163,32 +163,45 @@ class GPS:
             self.beetle.logger.error('gps signal too low')
 
 class PhoneHome:
-    ''' Phone home to update remote status '''
+    '''
+    Phone home to update remote status
+
+    TODO: Down usb0 and phone home through wifi when at home. This requires
+    figuring out how to programatically enable usb tethering on the Nexus 5
+    since it times out and disables itself when there is no traffic.
+    '''
     def __init__(self, beetle):
         self.beetle = beetle
         self.last_phone_home = 0.0
+        self.beetle.logger.info('PhoneHome poller initialized')
 
     def poll(self):
+        ''' Update local file as often as possible for webui '''
+        self.beetle.cur.execute('SELECT * FROM state')
+        rows = self.beetle.cur.fetchall()
+        json_rows = []
+        for row in rows:
+            ts = row[1]
+            name = row[2]
+            value = row[3]
+            timeout = row[4]
+            json_rows.append('"%s":{"value":"%s","ts":"%s","timeout":"%s"}' %
+                             (name, value, ts, timeout))
+        json = '{%s}' % ','.join(json_rows)
+        fname = 'state.json'
+        write_path = '/var/www/html/%s' % fname
+        with open(write_path, 'w+') as fout:
+            fout.write(json)
+            fout.flush()
+            os.fsync(fout.fileno())
+        ''' Only send the data home every 5 minutes '''
         now = time.time()
         delta = now - self.last_phone_home
         if delta < 300.0 and delta > 0.0:
             return
         self.last_phone_home = now
-        '''
-        TODO: Down usb0 and phone home through wifi when at home. This requires
-        figuring out how to programatically enable usb tethering on the Nexus 5
-        since it times out and disables itself when there is no traffic.
-        '''
-        self.beetle.cur.execute('SELECT * FROM state')
-        rows = self.beetle.cur.fetchall()
-        fname = 'state.txt'
-        with open(fname, 'w+') as fout:
-            for row in rows:
-                fout.write('%s\t%s\t%s\t%.1f\n' % (row[1:5]))
-            fout.flush()
-            os.fsync(fout.fileno())
         cmd = ('scp -P 2222 %s pi@crystalpalace.ddns.net'
-               ':/var/www/html/beetle/%s > /dev/null' % (fname, fname))
+               ':/var/www/html/beetle/%s > /dev/null' % (write_path, fname))
         subprocess.call(cmd, shell=True)
 
 class State:

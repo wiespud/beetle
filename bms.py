@@ -123,12 +123,12 @@ class BatteryMonitoringSystem:
         self.v = sum(v_arr)
         self.v_min = min(v_arr)
         self.v_max = max(v_arr)
-        self.beetle.state.set('front_t_av', '%.2f' % self.front_t_av)
-        self.beetle.state.set('back_t_av', '%.2f' % self.back_t_av)
-        self.beetle.state.set('v', '%.2f' % self.v)
-        self.beetle.state.set('v_av', '%.2f' % self.v_av)
-        self.beetle.state.set('v_min', '%.2f' % self.v_min)
-        self.beetle.state.set('v_max', '%.2f' % self.v_max)
+        self.beetle.state.set('front_t_av', '%.0f' % self.front_t_av)
+        self.beetle.state.set('back_t_av', '%.0f' % self.back_t_av)
+        self.beetle.state.set('v', '%.01f' % self.v)
+        self.beetle.state.set('v_av', '%.02f' % self.v_av)
+        self.beetle.state.set('v_min', '%.02f' % self.v_min)
+        self.beetle.state.set('v_max', '%.02f' % self.v_max)
 
     def history(self):
         amps = float(self.beetle.state.get('amps'))

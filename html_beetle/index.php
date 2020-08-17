@@ -6,21 +6,30 @@
         <meta http-equiv='Content-Type' content='text/html; charset=utf8' />
         <script type='text/javascript'>
 
-            function refresh() {
+            function update(state) {
                 var elems = document.getElementsByClassName('updateme');
                 for (var i = 0; i < elems.length; i++) {
-                    let req = new XMLHttpRequest();
-                    let elem = elems[i];
-                    let txtfile = elem.getAttribute('txtfile');
-                    req.onreadystatechange = function () {
-                        if (req.readyState == 4 && req.status == 200) {
-                            elem.innerText = req.responseText;
-                        }
+                    var elem = elems[i];
+                    if (state.hasOwnProperty(elem.id)) {
+                        elem.innerText = state[elem.id]['value'];
                     }
-                    req.open('GET', txtfile, true);
-                    req.setRequestHeader('Cache-Control', 'no-cache');
-                    req.send(null);
+                    else {
+                        elem.innerText = 'Error';
+                    }
                 }
+            }
+
+            function refresh() {
+                var req = new XMLHttpRequest();
+                req.onreadystatechange = function () {
+                    if (req.readyState == 4 && req.status == 200) {
+                        var state = JSON.parse(req.responseText);
+                        update(state);
+                    }
+                }
+                req.open('GET', 'state.json', true);
+                req.setRequestHeader('Cache-Control', 'no-cache');
+                req.send(null);
             }
 
             function init() {
@@ -32,44 +41,36 @@
 
             function button(elem) {
                 var update_elem = document.getElementById(elem.className);
-                update_elem.innerText = elem.id;
+                var value = elem.getAttribute('value');
+                update_elem.innerText = value;
                 $.ajax({
                     url: 'state.php',
                     type: 'post',
-                    data: { 'name': elem.className, 'value': elem.id }
+                    data: { 'name': elem.className, 'value': value }
                 });
             }
 
         </script>
     </head>
 
-<body onload='init()' style='font-family:arial;font-weight:normal;color:silver;background-color:black;zoom:500%;'>
+    <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:500%;'>
 
-<h2>Speed</h2>
-<h1 class='updateme' txtfile='hspeed.txt'></h1>
-<h2>Speed (filtered)</h2>
-<h1 class='updateme' txtfile='fspeed.txt'></h1>
-<br>
+        <div style='font-size:2.5em;'><a class='updateme' id='v'></a> V</div>
+        <div><a class='updateme' id='v_min'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_av'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_max'></a> V</div>
+        <div style='margin-bottom:10px;'>Front: <a class='updateme' id='front_t_av'></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av'></a> C</div>
 
-<h2>Charger: <a id='charger'><?php
-$servername = '10.10.10.2';
-$username = 'beetle';
-$password = file_get_contents('/home/pi/db_passwd.txt');
-$dbname = 'beetle';
+        <div>Trip Odometer <button class='trip_odometer' value='0.0' onclick='button(this)' style='background-color:silver'>Reset</button></div>
+        <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='trip_odometer'></a> mi</div>
 
-$conn = new mysqli($servername, $username, $password, $dbname);
-if ($conn->connect_error) {
-    die('Connection failed: ' . $conn->connect_error);
-}
+        <div>Charge Odometer</div>
+        <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='charge_odometer'></a> mi</div>
 
-$sql = 'SELECT * FROM state WHERE name = "charger";';
-$result = $conn->query($sql);
-$row = $result->fetch_assoc();
-echo $row['value'];
-$conn->close();
-?></a></h2>
-<button class='charger' id='enabled' onclick='button(this)' style='background-color:silver'>Enable</button>
-<button class='charger' id='disabled' onclick='button(this)' style='background-color:silver'>Disable</button>
+        <div style='margin-bottom:2px;'>Charger: <a class='updateme' id='charger'></a></div>
+        <div>
+            <button class='charger' value='enabled' onclick='button(this)' style='background-color:silver'>Enable</button>
+            <button class='charger' value='disabled' onclick='button(this)' style='background-color:silver'>Disable</button>
+            <button class='charger' value='once' onclick='button(this)' style='background-color:silver'>Once</button>
+        </div>
 
-</body>
+    </body>
 </html>
