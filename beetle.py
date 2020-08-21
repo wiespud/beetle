@@ -5,6 +5,7 @@ import gpsd
 import logging
 import MySQLdb
 import os
+import smbus
 import socket
 import subprocess
 import time
@@ -15,6 +16,7 @@ from logging.handlers import RotatingFileHandler
 
 import bms
 import heating
+import nau
 
 def setup_logger(name):
     formatter = logging.Formatter(fmt='%(asctime)s %(levelname)-8s %(message)s',
@@ -47,6 +49,39 @@ def at_home(lat, lon):
     if lat < 45.0180 and lat > 45.0167 and lon < -93.3545 and lon > -93.3555:
         return True
     return False
+
+class ADC:
+    ''' ADC that measures 12V battery voltage and current sensor output '''
+    def __init__(self, beetle):
+        self.beetle = beetle
+        self.bus = smbus.SMBus(0)
+        nau.chip_setup(self.bus)
+        self.ch = 1
+        self.count = { 1 : 5, 2 : 3 }
+        self.values = { 1 : [], 2 : [] }
+        self.adjust = { 1 : (3.31, -0.0391), 2 : (1.0, 0.0) }
+        nau.voltage_setup(self.bus, self.ch)
+        nau.start_measurement(self.bus)
+        self.beetle.logger.info('ADC poller initialized')
+
+    def poll(self):
+        v_nau = nau.get_voltage(self.bus)
+        scale, offset = self.adjust[self.ch]
+        v = v_nau * scale + offset
+        self.values[self.ch].append(v)
+        if len(self.values[self.ch]) > self.count[self.ch]:
+            self.values[self.ch].pop(0)
+        v_av = sum(self.values[self.ch]) / len(self.values[self.ch])
+        if self.ch == 1:
+            ''' Ch. 1 is 12V battery '''
+            self.beetle.state.set('v_acc_batt', '%.2f' % v_av)
+            self.ch = 2
+        else:
+            ''' Ch. 2 is current sensor '''
+            self.beetle.state.set('v_i_sense', '%.3f' % v_av)
+            self.ch = 1
+        nau.voltage_setup(self.bus, self.ch)
+        nau.start_measurement(self.bus)
 
 class Charger:
     ''' Charger '''
@@ -90,18 +125,33 @@ class DCDC:
     def __init__(self, beetle):
         self.beetle = beetle
         self.pin = gpiozero.OutputDevice(13, active_high=False)
+        self.last_poll = 0.0
+        self.next_poll = 5
         self.beetle.logger.info('DCDC poller initialized')
 
     def poll(self):
-        # XXX for now just keep the dcdc on all the time when driving
-        ac_present = self.beetle.gpio.get('ac_present')
-        ignition = self.beetle.gpio.get('ignition')
-        if ac_present == 0 and ignition == 1 and self.pin.value == 0:
+        now = time.time()
+        delta = now - self.last_poll
+        if delta < self.next_poll and delta > 0.0:
+            return
+        self.last_poll = now
+        ''' never turn on dcdc when ac is present'''
+        if self.beetle.gpio.get('ac_present') == 1:
+            if self.pin.value == 1:
+                self.beetle.logger.info('turning off dcdc (ac present)')
+                self.pin.off()
+            self.next_poll = 60
+            return
+        ''' on at 12V for at least 1 minute, off at 12.5V '''
+        v_acc = float(self.beetle.state.get('v_acc_batt'))
+        if v_acc < 12.0 and self.pin.value == 0:
             self.beetle.logger.info('turning on dcdc')
             self.pin.on()
-        elif (ac_present == 1 or ignition == 0) and self.pin.value == 1:
+            self.next_poll = 60
+        elif v_acc > 12.5 and self.pin.value == 1:
             self.beetle.logger.info('turning off dcdc')
             self.pin.off()
+            self.next_poll = 5
 
 class Gpio:
     ''' State class '''
@@ -296,6 +346,7 @@ class Beetle:
             self.dash_light.on()
             ''' set up back-only pollers '''
             self.pollers.append(heating.BatteryHeater(self))
+            self.pollers.append(ADC(self))
             self.pollers.append(DCDC(self))
             self.pollers.append(Charger(self))
         else: # self.location == 'front':
