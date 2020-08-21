@@ -45,8 +45,8 @@ def at_home(lat, lon):
     south bound: 45.0167
     '''
     if lat < 45.0180 and lat > 45.0167 and lon < -93.3545 and lon > -93.3555:
-        return true
-    return false
+        return True
+    return False
 
 class Charger:
     ''' Charger '''
@@ -173,9 +173,19 @@ class PhoneHome:
     def __init__(self, beetle):
         self.beetle = beetle
         self.last_phone_home = 0.0
+        self.proc = None
         self.beetle.logger.info('PhoneHome poller initialized')
 
     def poll(self):
+        ''' Update usb0 ip in state table '''
+        cmd = 'ip addr show dev usb0'
+        try:
+            output = subprocess.check_output(cmd, shell=True)
+            if 'inet 192.168.' in output:
+                ip = output.split('inet 192.168.')[1].split('/')[0]
+                self.beetle.state.set('ip', ip)
+        except CalledProcessError:
+            pass
         ''' Update local file as often as possible for webui '''
         self.beetle.cur.execute('SELECT * FROM state')
         rows = self.beetle.cur.fetchall()
@@ -199,10 +209,12 @@ class PhoneHome:
         delta = now - self.last_phone_home
         if delta < 300.0 and delta > 0.0:
             return
+        if self.proc != None and self.proc.poll() == None:
+            self.proc.kill()
         self.last_phone_home = now
         cmd = ('scp -P 2222 %s pi@crystalpalace.ddns.net'
                ':/var/www/html/beetle/%s > /dev/null' % (write_path, fname))
-        subprocess.call(cmd, shell=True)
+        self.proc = subprocess.Popen(cmd, shell=True)
 
 class State:
     ''' State class '''
