@@ -59,9 +59,11 @@
         </script>
     </head>
 
-    <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:500%;'>
+    <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:400%;'>
 
         <div style='font-size:2.5em;'><a class='updateme' id='v'></a> V</div>
+        <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt'></a> V</div>
+        <div style='font-size:2.5em;'><a class='updateme' id='v_i_sense'></a> V</div>
         <div><a class='updateme' id='v_min'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_av'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_max'></a> V</div>
         <div style='margin-bottom:10px;'>Front: <a class='updateme' id='front_t_av'></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av'></a> C</div>
 

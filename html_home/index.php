@@ -69,12 +69,13 @@
         </script>
     </head>
 
-    <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:450%;'>
+    <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:400%;'>
 
         <a id='location' href='https://www.google.com/maps/' style='position:absolute;top:32px;right:32px;zoom:16%;'><img src='maps.ico'/></a>
         <div class='updateme' id='ip' style='position:absolute;top:74px;right:18px;zoom:60%;'>42.108</div>
 
         <div style='font-size:2.5em;'><a class='updateme' id='v'></a> V</div>
+        <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt'></a> V</div>
         <div><a class='updateme' id='v_min'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_av'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_max'></a> V</div>
         <div style='margin-bottom:10px;'>Front: <a class='updateme' id='front_t_av'></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av'></a> C</div>
 

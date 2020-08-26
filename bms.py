@@ -88,7 +88,7 @@ class BatteryMonitoringSystem:
             t_av = row[3]
             v = row[4]
             v_av = row[5]
-            if t_av < 0.0 or t_av > 50.0:
+            if t_av < 0.0 or t_av > 55.0:
                 self.beetle.logger.error('group %d t_av=%.01f' % (cg, t_av))
                 errors += 1
             # allow less than 6 volts if AC present (for charging)

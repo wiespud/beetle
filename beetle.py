@@ -279,7 +279,7 @@ class State:
         value = row[3]
         timeout = row[4]
         last_update = (now - ts).total_seconds()
-        if timeout > 0.0 and (last_update > timeout or last_update < -1.0):
+        if timeout > 0.0 and (last_update > timeout or last_update < -5.0):
             self.beetle.logger.error('state variable %s last update was %.01f '
                                      'seconds ago' % (name, last_update))
             return None
