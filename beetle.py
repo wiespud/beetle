@@ -140,6 +140,7 @@ class DCDC:
             if self.pin.value == 1:
                 self.beetle.logger.info('turning off dcdc (ac present)')
                 self.pin.off()
+                self.beetle.state.set('dcdc', 'disabled')
             self.next_poll = 60
             return
         ''' on at 12V for at least 1 minute, off at 12.5V '''
@@ -147,10 +148,12 @@ class DCDC:
         if v_acc < 12.0 and self.pin.value == 0:
             self.beetle.logger.info('turning on dcdc')
             self.pin.on()
+            self.beetle.state.set('dcdc', 'enabled')
             self.next_poll = 60
         elif v_acc > 12.5 and self.pin.value == 1:
             self.beetle.logger.info('turning off dcdc')
             self.pin.off()
+            self.beetle.state.set('dcdc', 'disabled')
             self.next_poll = 5
 
 class Gpio:
