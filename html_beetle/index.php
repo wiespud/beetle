@@ -84,6 +84,11 @@
         <div style='position:absolute;top:60px;right:10px;'>
             DCDC <span class='led' id='dcdc' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
+        <div style='position:absolute;top:85px;right:10px;'>
+            <a href='logs.php'>
+                <button style='background-color:silver'>Logs</button>
+            </a>
+        </div>
 
         <div style='font-size:2.5em;'><a class='updateme' id='v'></a> V</div>
         <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt'></a> V</div>
