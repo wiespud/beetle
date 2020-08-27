@@ -88,11 +88,17 @@ class BatteryMonitoringSystem:
             t_av = row[3]
             v = row[4]
             v_av = row[5]
-            if t_av < 0.0 or t_av > 55.0:
+            # determine the temperature threshold
+            ac_present = self.beetle.gpio.get('ac_present')
+            if ac_present == 1:
+                t_thresh = 55.0
+            else:
+                t_thresh = 60.0
+            if t_av < 0.0 or t_av > t_thresh:
                 self.beetle.logger.error('group %d t_av=%.01f' % (cg, t_av))
                 errors += 1
             # allow less than 6 volts if AC present (for charging)
-            if v_av >= 8.1 or (v_av < 6.0 and self.beetle.ac_present.value == 0):
+            if v_av >= 8.1 or (v_av < 6.0 and ac_present == 0):
                 self.beetle.logger.error('group %d v_av=%.03f' % (cg, v_av))
                 errors += 1
             last_measurements = (now - ts).total_seconds()
