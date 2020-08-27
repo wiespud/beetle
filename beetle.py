@@ -193,8 +193,7 @@ class GPS:
     def __init__(self, beetle):
         self.beetle = beetle
         gpsd.connect()
-        self.trip = float(self.beetle.state.get('trip_odometer'))
-        self.charge = float(self.beetle.state.get('charge_odometer'))
+        self.position = None
         self.beetle.logger.info('GPS poller initialized')
 
     def poll(self):
@@ -205,12 +204,14 @@ class GPS:
             speed_str = '%.0f' % (packet.speed() * 2.237)
             self.beetle.state.set('speed', speed_str)
             new_position = packet.position()
-            if self.beetle.gpio.get('ignition') == 1:
+            if self.beetle.gpio.get('ignition') == 1 and self.position != None:
+                trip = float(self.beetle.state.get('trip_odometer'))
+                charge = float(self.beetle.state.get('charge_odometer'))
                 d = distance(new_position, self.position).miles
-                self.trip += d
-                self.charge += d
-                self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
-                self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
+                trip += d
+                charge += d
+                self.beetle.state.set('trip_odometer', '%.1f' % trip)
+                self.beetle.state.set('charge_odometer', '%.1f' % charge)
             self.position = new_position
         except gpsd.NoFixError:
             self.beetle.logger.error('gps signal too low')
