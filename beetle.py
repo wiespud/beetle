@@ -88,7 +88,7 @@ class Charger:
     def __init__(self, beetle):
         self.beetle = beetle
         self.pin = gpiozero.OutputDevice(5, active_high=False)
-        self.last_poll = 0.0
+        self.last_poll = time.time()
         self.beetle.logger.info('Charger poller initialized')
 
     def poll(self):
@@ -194,6 +194,9 @@ class GPS:
         self.beetle = beetle
         gpsd.connect()
         self.position = None
+        self.prev_ignition = self.beetle.gpio.get('ignition')
+        self.trip = float(self.beetle.state.get('trip_odometer'))
+        self.charge = float(self.beetle.state.get('charge_odometer'))
         self.beetle.logger.info('GPS poller initialized')
 
     def poll(self):
@@ -204,14 +207,18 @@ class GPS:
             speed_str = '%.0f' % (packet.speed() * 2.237)
             self.beetle.state.set('speed', speed_str)
             new_position = packet.position()
-            if self.beetle.gpio.get('ignition') == 1 and self.position != None:
-                trip = float(self.beetle.state.get('trip_odometer'))
-                charge = float(self.beetle.state.get('charge_odometer'))
-                d = distance(new_position, self.position).miles
-                trip += d
-                charge += d
-                self.beetle.state.set('trip_odometer', '%.1f' % trip)
-                self.beetle.state.set('charge_odometer', '%.1f' % charge)
+            ignition = self.beetle.gpio.get('ignition')
+            if ignition == 1:
+                if self.prev_ignition == 0:
+                    self.trip = float(self.beetle.state.get('trip_odometer'))
+                    self.charge = float(self.beetle.state.get('charge_odometer'))
+                if self.position != None:
+                    d = distance(new_position, self.position).miles
+                    self.trip += d
+                    self.charge += d
+                    self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
+                    self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
+            self.prev_ignition = ignition
             self.position = new_position
         except gpsd.NoFixError:
             self.beetle.logger.error('gps signal too low')
@@ -334,6 +341,7 @@ class WiFi:
             return
         cmd = 'sudo ip link set %s wlan0' % action
         subprocess.call(cmd, shell=True)
+        self.beetle.logger.info('wlan0 %s' % action)
 
 class Beetle:
     ''' Integration class for all the components of the car '''
@@ -344,6 +352,12 @@ class Beetle:
         self.cur = self.db.cursor()
         self.state = State(self)
         self.pollers = []
+        ''' set up common pollers '''
+        self.bms = bms.BatteryMonitoringSystem(self)
+        self.pollers.append(self.bms)
+        self.gpio = Gpio(self)
+        self.pollers.append(self.gpio)
+        self.pollers.append(WiFi(self))
         if location == 'back':
             ''' turn off dash light '''
             self.dash_light = gpiozero.OutputDevice(27, active_high=False)
@@ -353,16 +367,10 @@ class Beetle:
             self.pollers.append(ADC(self))
             self.pollers.append(DCDC(self))
             self.pollers.append(Charger(self))
-        else: # self.location == 'front':
+        else:
             ''' set up front-only pollers '''
             self.pollers.append(GPS(self))
             self.pollers.append(PhoneHome(self))
-        ''' set up common pollers '''
-        self.bms = bms.BatteryMonitoringSystem(self)
-        self.pollers.append(self.bms)
-        self.pollers.append(WiFi(self))
-        self.gpio = Gpio(self)
-        self.pollers.append(self.gpio)
 
     def poll(self):
         ''' Repeat tasks forever at desired frequences '''
