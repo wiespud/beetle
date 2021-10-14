@@ -7,6 +7,7 @@
         <script type='text/javascript'>
 
             function update(state) {
+                // handle updateme class elements
                 var elems = document.getElementsByClassName('updateme');
                 var date = new Date();
                 var now = date.getTime();
@@ -23,6 +24,8 @@
                         }
                     }
                 }
+
+                // handle leds
                 var elems = document.getElementsByClassName('led');
                 for (var i = 0; i < elems.length; i++) {
                     var elem = elems[i];
@@ -31,7 +34,7 @@
                     if (timeout > 0.0 && now > ts + timeout) {
                         elem.style.backgroundColor = 'red';
                     } else if (state[elem.id]['value'] == 'enabled' ||
-                             state[elem.id]['value'] == '1') {
+                               state[elem.id]['value'] == '1') {
                         elem.style.backgroundColor = 'green';
                     } else {
                         elem.style.backgroundColor = 'grey';
@@ -79,12 +82,15 @@
             AC <span class='led' id='ac_present' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:35px;right:10px;'>
-            Charging <span class='led' id='charging' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+            Charger <span class='led' id='charging' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:60px;right:10px;'>
             DCDC <span class='led' id='dcdc' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:85px;right:10px;'>
+            Fan <span class='led' id='controller_fan' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+        </div>
+        <div style='position:absolute;top:110px;right:10px;'>
             <a href='logs.php'>
                 <button style='background-color:silver'>Logs</button>
             </a>
@@ -92,9 +98,12 @@
 
         <div style='font-size:2.5em;'><a class='updateme' id='v'></a> V</div>
         <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt'></a> V</div>
+        <!--
         <div style='font-size:2.5em;'><a class='updateme' id='v_i_sense'></a> V</div>
-        <div><a class='updateme' id='v_min'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_av'></a> V&nbsp;&nbsp;&nbsp;&nbsp;<a class='updateme' id='v_max'></a> V</div>
-        <div style='margin-bottom:10px;'>Front: <a class='updateme' id='front_t_av'></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av'></a> C</div>
+        -->
+        <div>Min: <a class='updateme' id='v_min'></a> V&nbsp;&nbsp;&nbsp;&nbsp;Max: <a class='updateme' id='v_max'></a> V</div>
+        <div>Front: <a class='updateme' id='front_t_av'></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av'></a> C</div>
+        <div style='margin-bottom:10px;'>Controller: <a class='updateme' id='controller_temp'></a> C</div>
 
         <div>Trip Odometer <button class='trip_odometer' value='0.0' onclick='button(this)' style='background-color:silver'>Reset</button></div>
         <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='trip_odometer'></a> mi</div>

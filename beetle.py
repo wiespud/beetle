@@ -15,6 +15,7 @@ from geopy.distance import distance
 from logging.handlers import RotatingFileHandler
 
 import bms
+import ds
 import heating
 import nau
 
@@ -59,7 +60,7 @@ class ADC:
         self.ch = 1
         self.count = { 1 : 5, 2 : 3 }
         self.values = { 1 : [], 2 : [] }
-        self.adjust = { 1 : (3.31, -0.0391), 2 : (1.0, 0.0) }
+        self.adjust = { 1 : (3.31, 1.0), 2 : (1.0, 0.0) }
         nau.voltage_setup(self.bus, self.ch)
         nau.start_measurement(self.bus)
         self.beetle.logger.info('ADC poller initialized')
@@ -120,11 +121,63 @@ class Charger:
         if charging == 1 and odometer > 0.0:
             self.beetle.state.set('charge_odometer', '0.0')
 
+class ControllerFan:
+    ''' Controller fan attached to controller heatsink '''
+    def __init__(self, beetle):
+        self.beetle = beetle
+        self.pin = gpiozero.OutputDevice(19, active_high=False)
+        self.beetle.state.set('controller_fan', 'disabled')
+        self.last_poll = 0.0
+        self.next_poll = 10
+        self.beetle.logger.info('Controller fan poller initialized')
+
+    def poll(self):
+        now = time.time()
+        delta = now - self.last_poll
+        if delta < self.next_poll and delta > 0.0:
+            return
+        self.last_poll = now
+        ''' get temperature '''
+        try:
+            c_temp = ds.get_temp('28-01143ba5cfaa')
+        except IOError:
+            self.beetle.logger.error('failed to read controller temperature')
+            if self.pin.value == 1:
+                self.beetle.logger.info('turning off controller fan (error)')
+                self.pin.off()
+                self.beetle.state.set('controller_fan', 'disabled')
+            return
+        self.beetle.state.set('controller_temp', '%.0f' % c_temp)
+        ''' turn off when ignition is off or ac is present '''
+        ignition = self.beetle.gpio.get('ignition')
+        ac_present = self.beetle.gpio.get('ac_present')
+        if ignition == 0 or ac_present == 1:
+            if self.pin.value == 1:
+                self.beetle.logger.info('turning off controller fan (no ignition, ac present)')
+                self.pin.off()
+                self.beetle.state.set('controller_fan', 'disabled')
+            self.next_poll = 60
+            return
+        ''' check temperature and turn fan on/off '''
+        if c_temp < 55.0:
+            if self.pin.value == 1:
+                self.beetle.logger.info('turning off controller fan (t=%.1f)' % c_temp)
+                self.pin.off()
+                self.beetle.state.set('controller_fan', 'disabled')
+            self.next_poll = 10
+            return
+        if self.pin.value == 0:
+            self.beetle.logger.info('turning on controller fan (t=%.1f)' % c_temp)
+            self.pin.on()
+            self.beetle.state.set('controller_fan', 'enabled')
+            self.next_poll = 60
+
 class DCDC:
     ''' DCDC converter '''
     def __init__(self, beetle):
         self.beetle = beetle
         self.pin = gpiozero.OutputDevice(13, active_high=False)
+        self.beetle.state.set('dcdc', 'disabled')
         self.last_poll = 0.0
         self.next_poll = 5
         self.beetle.logger.info('DCDC poller initialized')
@@ -245,7 +298,7 @@ class PhoneHome:
             if 'inet 192.168.' in output:
                 ip = output.split('inet 192.168.')[1].split('/')[0]
                 self.beetle.state.set('ip', ip)
-        except CalledProcessError:
+        except subprocess.CalledProcessError:
             pass
         ''' Update local file as often as possible for webui '''
         self.beetle.cur.execute('SELECT * FROM state')
@@ -357,7 +410,7 @@ class Beetle:
         self.pollers.append(self.bms)
         self.gpio = Gpio(self)
         self.pollers.append(self.gpio)
-        self.pollers.append(WiFi(self))
+        # ~ self.pollers.append(WiFi(self))
         if location == 'back':
             ''' turn off dash light '''
             self.dash_light = gpiozero.OutputDevice(27, active_high=False)
@@ -365,6 +418,7 @@ class Beetle:
             ''' set up back-only pollers '''
             self.pollers.append(heating.BatteryHeater(self))
             self.pollers.append(ADC(self))
+            self.pollers.append(ControllerFan(self))
             self.pollers.append(DCDC(self))
             self.pollers.append(Charger(self))
         else:
