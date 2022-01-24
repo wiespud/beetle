@@ -55,7 +55,7 @@ class Battery:
         self.voltages = { 1: [], 2: [] }
         tca.select(bus, address, channel)
         if not nau.chip_setup(bus):
-            print 'ERROR: Chip setup failed on %s' % self
+            print('ERROR: Chip setup failed on %s' % self)
             tca.disable(bus, address)
             raise OSError
         tca.disable(bus, address)
@@ -193,5 +193,5 @@ class Batteries:
         for battery in self.batteries:
             battery.finish_voltage_measurement(2)
             if battery.check_error_history():
-                print 'ERROR: Exceeded error limit: %s' % battery
+                print('ERROR: Exceeded error limit: %s' % battery)
                 raise OSError

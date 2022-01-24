@@ -1,16 +1,18 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import gpiozero
 import gpsd
+import json
 import logging
-import MySQLdb
 import os
+import shutil
 import smbus
 import socket
 import subprocess
+import threading
 import time
+import zmq
 
-from datetime import datetime
 from geopy.distance import distance
 from logging.handlers import RotatingFileHandler
 
@@ -29,16 +31,6 @@ def setup_logger(name):
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
     return logger
-
-def setup_db(location):
-    if location == 'back':
-        host = 'localhost'
-    else:
-        host = '10.10.10.2'
-    with open('db_passwd.txt') as fin:
-        passwd = fin.read()
-    db = MySQLdb.connect(host=host, user='beetle', passwd=passwd, db='beetle')
-    return db
 
 def at_home(lat, lon):
     '''
@@ -246,10 +238,10 @@ class GPS:
     def __init__(self, beetle):
         self.beetle = beetle
         gpsd.connect()
-        self.position = None
-        self.prev_ignition = self.beetle.gpio.get('ignition')
-        self.trip = float(self.beetle.state.get('trip_odometer'))
-        self.charge = float(self.beetle.state.get('charge_odometer'))
+        # ~ self.position = None
+        # ~ self.prev_ignition = self.beetle.gpio.get('ignition')
+        # ~ self.trip = float(self.beetle.state.get('trip_odometer'))
+        # ~ self.charge = float(self.beetle.state.get('charge_odometer'))
         self.beetle.logger.info('GPS poller initialized')
 
     def poll(self):
@@ -259,20 +251,20 @@ class GPS:
             self.beetle.state.set('lon', '%.9f' % packet.lon)
             speed_str = '%.0f' % (packet.speed() * 2.237)
             self.beetle.state.set('speed', speed_str)
-            new_position = packet.position()
-            ignition = self.beetle.gpio.get('ignition')
-            if ignition == 1:
-                if self.prev_ignition == 0:
-                    self.trip = float(self.beetle.state.get('trip_odometer'))
-                    self.charge = float(self.beetle.state.get('charge_odometer'))
-                if self.position != None:
-                    d = distance(new_position, self.position).miles
-                    self.trip += d
-                    self.charge += d
-                    self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
-                    self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
-            self.prev_ignition = ignition
-            self.position = new_position
+            # ~ new_position = packet.position()
+            # ~ ignition = self.beetle.gpio.get('ignition')
+            # ~ if ignition == 1:
+                # ~ if self.prev_ignition == 0:
+                    # ~ self.trip = float(self.beetle.state.get('trip_odometer'))
+                    # ~ self.charge = float(self.beetle.state.get('charge_odometer'))
+                # ~ if self.position != None:
+                    # ~ d = distance(new_position, self.position).miles
+                    # ~ self.trip += d
+                    # ~ self.charge += d
+                    # ~ self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
+                    # ~ self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
+            # ~ self.prev_ignition = ignition
+            # ~ self.position = new_position
         except gpsd.NoFixError:
             self.beetle.logger.error('gps signal too low')
 
@@ -286,74 +278,121 @@ class PhoneHome:
     '''
     def __init__(self, beetle):
         self.beetle = beetle
-        self.last_phone_home = 0.0
+        self.last_poll = 0.0
         self.proc = None
         self.beetle.logger.info('PhoneHome poller initialized')
 
     def poll(self):
         ''' Update usb0 ip in state table '''
-        cmd = 'ip addr show dev usb0'
-        try:
-            output = subprocess.check_output(cmd, shell=True)
-            if 'inet 192.168.' in output:
-                ip = output.split('inet 192.168.')[1].split('/')[0]
-                self.beetle.state.set('ip', ip)
-        except subprocess.CalledProcessError:
-            pass
-        ''' Update local file as often as possible for webui '''
-        self.beetle.cur.execute('SELECT * FROM state')
-        rows = self.beetle.cur.fetchall()
-        json_rows = []
-        for row in rows:
-            ts = row[1]
-            name = row[2]
-            value = row[3]
-            timeout = row[4]
-            json_rows.append('"%s":{"value":"%s","ts":"%s","timeout":"%s"}' %
-                             (name, value, ts, timeout))
-        json = '{%s}' % ','.join(json_rows)
-        fname = 'state.json'
-        write_path = '/var/www/html/%s' % fname
-        with open(write_path, 'w+') as fout:
-            fout.write(json)
-            fout.flush()
-            os.fsync(fout.fileno())
-        ''' Only send the data home every 5 minutes '''
-        now = time.time()
-        delta = now - self.last_phone_home
-        if delta < 300.0 and delta > 0.0:
+        # ~ cmd = 'ip addr show dev usb0'
+        # ~ try:
+            # ~ output = subprocess.check_output(cmd, shell=True)
+            # ~ if 'inet 192.168.' in output:
+                # ~ ip = output.split('inet 192.168.')[1].split('/')[0]
+                # ~ self.beetle.state.set('ip', ip)
+        # ~ except subprocess.CalledProcessError:
+            # ~ pass
+        ''' Only send the state data home every 5 minutes '''
+        now = int(time.time())
+        delta = now - self.last_poll
+        if delta < 300 and delta > 0:
             return
         if self.proc != None and self.proc.poll() == None:
             self.proc.kill()
-        self.last_phone_home = now
-        cmd = ('scp -P 2222 %s pi@crystalpalace.ddns.net'
-               ':/var/www/html/beetle/%s > /dev/null' % (write_path, fname))
-        self.proc = subprocess.Popen(cmd, shell=True)
+        self.last_poll = now
+        # ~ cmd = ['scp', '-P', '2222', self.beetle.state.temporary_state_file,
+               # ~ 'pi@crystalpalace.ddns.net:/var/www/html/beetle/state.json']
+        cmd = ['scp', self.beetle.state.temporary_state_file,
+               'pi@basement.local:/var/www/html/beetle/state.json']
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                     stderr=subprocess.STDOUT)
+
+timeouts = {
+    'ac_present' : 60,
+    'ignition' : 60,
+    'charging' : 60,
+    'front_t_av' : 60,
+    'back_t_av' : 60,
+    'v' : 60,
+    'v_av' : 60,
+    'v_min' : 60,
+    'v_max' : 60,
+    'controller_temp' : 300,
+    'v_acc_batt' : 60,
+    'v_i_sense' : 60,
+}
 
 class State:
     ''' State class '''
     def __init__(self, beetle):
         self.beetle = beetle
+        self.last_poll = 0.0
+        self.temporary_state_file = '/run/user/1000/state.json'
+        self.persistent_state_file = '/home/pi/state.json'
+        try:
+            with open(self.persistent_state_file) as fin:
+                self.state = json.loads(fin.read())
+        except FileNotFoundError:
+            self.state = {}
+            self.beetle.logger.error('state.json not found')
+        self.zmq_ctx = zmq.Context()
+        self.pub_sock = self.zmq_ctx.socket(zmq.PUB)
+        self.pub_sock.bind('tcp://*:5555')
+        self.sub_sock = self.zmq_ctx.socket(zmq.SUB)
+        self.sub_sock.connect('tcp://localhost:5555')
+        if self.beetle.location == 'back':
+            self.sub_sock.connect('tcp://10.10.10.1:5555')
+        else:
+            self.sub_sock.connect('tcp://10.10.10.2:5555')
+        self.sub_sock.setsockopt_string(zmq.SUBSCRIBE, 'state')
+        self.sub_thread = threading.Thread(target=self.sub_thread_func)
+        self.sub_thread.start()
+
+    def sub_thread_func(self):
+        while True:
+            string = self.sub_sock.recv_string()
+            topic, name, value = string.split()
+            if topic != 'state':
+                self.beetle.logger.error('unexpected zmq topic %s' % topic)
+                continue
+            self.state[name] = (value, int(time.time()))
+
+    def poll(self):
+        ''' update state in tmpfs as often as possible '''
+        with open(self.temporary_state_file, 'w+') as fout:
+            fout.write(json.dumps(self.state, indent=4))
+            fout.flush()
+            os.fsync(fout.fileno())
+        ''' update persistent state every 5 minutes '''
+        now = int(time.time())
+        delta = now - self.last_poll
+        if delta < 300 and delta > 0:
+            return
+        shutil.copyfile(self.temporary_state_file, self.persistent_state_file)
+        self.last_poll = now
+
+    def get_json(self):
+        return json.dumps(self.state, indent=4)
 
     def get(self, name):
-        now = datetime.now()
-        self.beetle.cur.execute('SELECT * FROM state WHERE name = "%s";' % name)
-        row = self.beetle.cur.fetchall()[0]
-        ts = row[1]
-        value = row[3]
-        timeout = row[4]
-        last_update = (now - ts).total_seconds()
-        if timeout > 0.0 and (last_update > timeout or last_update < -5.0):
-            self.beetle.logger.error('state variable %s last update was %.01f '
+        now = int(time.time())
+        if name not in self.state:
+            self.beetle.logger.error('state variable %s not found' % name)
+            return None
+        value, ts = self.state[name]
+        timeout = 0
+        if name in timeouts:
+            timeout = timeouts[name]
+        last_update = now - ts
+        if timeout > 0 and (last_update > timeout or last_update < -5):
+            self.beetle.logger.error('state variable %s last update was %d '
                                      'seconds ago' % (name, last_update))
             return None
         else:
             return value
 
     def set(self, name, value):
-        self.beetle.cur.execute('UPDATE state SET ts = CURRENT_TIMESTAMP, '
-                                'value = "%s" WHERE name = "%s";' % (value, name))
-        self.beetle.db.commit()
+        self.pub_sock.send_string('state %s %s' % (name, value))
 
 class WiFi:
     ''' WiFi '''
@@ -401,11 +440,10 @@ class Beetle:
     def __init__(self, location):
         self.location = location
         self.logger = setup_logger('beetle')
-        self.db = setup_db(location)
-        self.cur = self.db.cursor()
-        self.state = State(self)
         self.pollers = []
         ''' set up common pollers '''
+        self.state = State(self)
+        self.pollers.append(self.state)
         self.bms = bms.BatteryMonitoringSystem(self)
         self.pollers.append(self.bms)
         self.gpio = Gpio(self)

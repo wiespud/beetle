@@ -5,8 +5,6 @@ Interface to monitor battery temperatures and turn on battery heaters
 import gpiozero
 import time
 
-from datetime import datetime
-
 HOLDOFF = 90.0 # wait this long for data to accumulate before doing anything
 
 class BatteryHeater:

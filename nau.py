@@ -43,7 +43,7 @@ def voltage_setup(bus, ch):
     elif ch == 2:
         bus.write_byte_data(ADDR_NAU, 0x02, 0x80) # Ch2
     else:
-        print 'ERROR: Invalid channel %s for NAU7802SGI' % ch
+        print('ERROR: Invalid channel %s for NAU7802SGI' % ch)
         raise OSError
 
 def voltage_setup_1(bus):

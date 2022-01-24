@@ -14,6 +14,6 @@ def get_temp(address):
             if 't=' in line:
                 t = line.split('t=')[1].strip()
                 temperature = float(t) / 1000
-    if reading_valid and temperature > 0.0:
+    if reading_valid:
         return temperature
     raise IOError # failed open for no such file also raises IOError
