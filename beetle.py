@@ -10,6 +10,7 @@ import smbus
 import socket
 import subprocess
 import threading
+import traceback
 import time
 import zmq
 
@@ -351,11 +352,16 @@ class State:
     def sub_thread_func(self):
         while True:
             string = self.sub_sock.recv_string()
+            if 'exit' in string:
+                return
             topic, name, value = string.split()
             if topic != 'state':
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
                 continue
             self.state[name] = (value, int(time.time()))
+
+    def thread_exit(self):
+        self.pub_sock.send_string('state exit')
 
     def poll(self):
         ''' update state in tmpfs as often as possible '''
@@ -468,14 +474,20 @@ class Beetle:
         ''' Repeat tasks forever at desired frequences '''
         self.logger.info('starting pollers')
         prev_ts = time.time()
-        while True:
-            for poller in self.pollers:
-                poller.poll()
-            now = time.time()
-            name = '%s_polling_period' % self.location
-            period = '%.2f' % (now - prev_ts)
-            self.state.set(name, period)
-            prev_ts = now
+        try:
+            while True:
+                for poller in self.pollers:
+                    poller.poll()
+                now = time.time()
+                name = '%s_polling_period' % self.location
+                period = '%.2f' % (now - prev_ts)
+                self.state.set(name, period)
+                prev_ts = now
+        except BaseException as e:
+            self.logger.error(traceback.format_exc())
+            self.state.thread_exit()
+            self.bms.thread_exit()
+            raise
 
 if __name__== '__main__':
 

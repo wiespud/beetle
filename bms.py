@@ -51,12 +51,17 @@ class BatteryMonitoringSystem:
     def sub_thread_func(self):
         while True:
             string = self.sub_sock.recv_string()
+            if 'exit' in string:
+                return
             topic, cg, values = string.split()
             cg = int(cg)
             if topic != 'bms':
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
                 continue
             self.state[cg] = (values, int(time.time()))
+
+    def thread_exit(self):
+        self.pub_sock.send_string('bms exit')
 
     def poll(self):
         self.gather()
