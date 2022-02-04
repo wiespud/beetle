@@ -5,7 +5,6 @@ import gpsd
 import json
 import logging
 import os
-import shutil
 import smbus
 import socket
 import subprocess
@@ -269,45 +268,6 @@ class GPS:
         except gpsd.NoFixError:
             self.beetle.logger.error('gps signal too low')
 
-class PhoneHome:
-    '''
-    Phone home to update remote status
-
-    TODO: Down usb0 and phone home through wifi when at home. This requires
-    figuring out how to programatically enable usb tethering on the Nexus 5
-    since it times out and disables itself when there is no traffic.
-    '''
-    def __init__(self, beetle):
-        self.beetle = beetle
-        self.last_poll = 0.0
-        self.proc = None
-        self.beetle.logger.info('PhoneHome poller initialized')
-
-    def poll(self):
-        ''' Update usb0 ip in state table '''
-        # ~ cmd = 'ip addr show dev usb0'
-        # ~ try:
-            # ~ output = subprocess.check_output(cmd, shell=True)
-            # ~ if 'inet 192.168.' in output:
-                # ~ ip = output.split('inet 192.168.')[1].split('/')[0]
-                # ~ self.beetle.state.set('ip', ip)
-        # ~ except subprocess.CalledProcessError:
-            # ~ pass
-        ''' Only send the state data home every 5 minutes '''
-        now = int(time.time())
-        delta = now - self.last_poll
-        if delta < 300 and delta > 0:
-            return
-        if self.proc != None and self.proc.poll() == None:
-            self.proc.kill()
-        self.last_poll = now
-        # ~ cmd = ['scp', '-P', '2222', self.beetle.state.temporary_state_file,
-               # ~ 'pi@crystalpalace.ddns.net:/var/www/html/beetle/state.json']
-        cmd = ['scp', self.beetle.state.temporary_state_file,
-               'pi@basement.local:/var/www/html/beetle/state.json']
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                     stderr=subprocess.STDOUT)
-
 timeouts = {
     'ac_present' : 60,
     'ignition' : 60,
@@ -348,6 +308,7 @@ class State:
         self.sub_sock.setsockopt_string(zmq.SUBSCRIBE, 'state')
         self.sub_thread = threading.Thread(target=self.sub_thread_func)
         self.sub_thread.start()
+        self.phone_home_proc = None
 
     def sub_thread_func(self):
         while True:
@@ -364,18 +325,39 @@ class State:
         self.pub_sock.send_string('state exit')
 
     def poll(self):
-        ''' update state in tmpfs as often as possible '''
-        with open(self.temporary_state_file, 'w+') as fout:
-            fout.write(json.dumps(self.state, indent=4))
-            fout.flush()
-            os.fsync(fout.fileno())
         ''' update persistent state every 5 minutes '''
         now = int(time.time())
         delta = now - self.last_poll
         if delta < 300 and delta > 0:
             return
-        shutil.copyfile(self.temporary_state_file, self.persistent_state_file)
         self.last_poll = now
+        self.write_persistent_state()
+        if location == 'back':
+            return
+        ''' update usb0 ip in state table '''
+        # TODO: find a cleaner way to get the usb0 ip address
+        # ~ cmd = ['ip', 'addr', 'show', 'dev', 'usb0']
+        # ~ try:
+            # ~ output = subprocess.check_output(cmd)
+            # ~ if 'inet 192.168.' in output:
+                # ~ ip = output.split('inet 192.168.')[1].split('/')[0]
+                # ~ self.beetle.state.set('ip', ip)
+        # ~ except subprocess.CalledProcessError:
+            # ~ pass
+        ''' phone home '''
+        if self.phone_home_proc != None and self.phone_home_proc.poll() == None:
+            self.phone_home_proc.kill()
+        # TODO: phone home through LTE connection when not at home
+        cmd = ['scp', self.persistent_state_file,
+               'pi@basement.local:/var/www/html/beetle/state.json']
+        self.phone_home_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                                stderr=subprocess.STDOUT)
+
+    def write_persistent_state(self):
+        with open(self.persistent_state_file, 'w+') as fout:
+            fout.write(json.dumps(self.state, indent=4))
+            fout.flush()
+            os.fsync(fout.fileno())
 
     def get_json(self):
         return json.dumps(self.state, indent=4)
@@ -468,7 +450,6 @@ class Beetle:
         else:
             ''' set up front-only pollers '''
             self.pollers.append(GPS(self))
-            self.pollers.append(PhoneHome(self))
 
     def poll(self):
         ''' Repeat tasks forever at desired frequences '''
@@ -487,11 +468,12 @@ class Beetle:
             self.logger.error(traceback.format_exc())
             self.state.thread_exit()
             self.bms.thread_exit()
+            self.state.write_persistent_state()
             raise
 
 if __name__== '__main__':
 
-    ''' At boot, wait a minute for networking, mysql, etc. to start '''
+    ''' At boot, wait a minute for networking, etc. to start '''
     with open('/proc/uptime') as fin:
         uptime = float(fin.readline().split()[0])
         if uptime < 60.0:

@@ -1,0 +1,69 @@
+
+after flashing pi os onto sd card, create wpa_supplicant.conf in boot folder
+
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+
+network={
+ ssid="<Name of your wireless LAN>"
+ psk="<Password for your wireless LAN>"
+}
+
+
+enable ssh by creating a file named ssh in the boot folder
+
+
+run `sudo raspi-config` and do the following
+* change hostname (beetle-front and beetle-back)
+* change password
+* change timezone
+* enable ssh
+* enable i2c
+* enable serial port
+* enable 1-wire
+* set wlan country
+* expand filesystem
+
+
+generate passwordless rsa keys
+ssh-keygen -t rsa
+
+
+change apt to use apt-cache-ng server
+create /etc/apt/apt.conf.d/02proxy with this in it:
+Acquire::http::Proxy "http://c720.local:3142";
+
+
+run `sudo apt update` and `sudo apt upgrade` and then install packages
+
+sudo apt install screen vim python3-pip python3-gpiozero python3-smbus python3-zmq apache2 python3-geopy
+sudo pip install gpsd-py3
+
+(beetle-front only)
+sudo apt install gpsd gpsd-clients
+add /dev/ttyACM0 to /etc/default/gpsd and run `sudo service gpsd restart`
+
+(beetle-back only)
+
+sudo apt install minicom
+change 1-wire pin to 16 by adding "dtoverlay=w1-gpio,gpiopin=16" in /boot/config.txt
+
+
+set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) in /etc/dhcpcd.conf
+
+
+enable second i2c bus by adding "dtparam=i2c_vc=on" in /boot/config.txt
+
+
+copy py and web files onto pi (can use install.sh)
+
+
+add crontab entry:
+@reboot /home/pi/beetle.py &
+
+
+create /var/log/beetle and make it writable by pi user
+
+
+sudo reboot
