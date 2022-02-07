@@ -26,6 +26,8 @@ class BatteryMonitoringSystem:
         ''' values passed from process() to history() '''
         self.front_t_av = 0.0
         self.back_t_av = 0.0
+        self.front_errors = 0
+        self.back_errors = 0
         self.v = 0.0
         self.v_av = 0.0
         self.v_min = 0.0
@@ -108,7 +110,10 @@ class BatteryMonitoringSystem:
         front_t_arr = []
         back_t_arr = []
         v_arr = []
+        self.front_errors = 0
+        self.back_errors = 0
         for cg in self.state:
+            group_errors = 0
             values, ts = self.state[cg]
             t, t_av, v, v_av = values.split(',')
             ts = int(ts)
@@ -124,20 +129,23 @@ class BatteryMonitoringSystem:
                 t_thresh = 60.0
             if t_av < 0.0 or t_av > t_thresh:
                 self.beetle.logger.error('group %d t_av=%.01f' % (cg, t_av))
-                errors += 1
+                group_errors += 1
             # allow less than 6 volts if AC present (for charging)
             if v_av >= 8.1 or (v_av < 6.0 and ac_present == 0):
                 self.beetle.logger.error('group %d v_av=%.03f' % (cg, v_av))
-                errors += 1
+                group_errors += 1
             last_measurements = now - ts
             if last_measurements > 60 or last_measurements < 0:
                 self.beetle.logger.error('group %d last measurements were %d '
                                          'seconds ago' % (cg, last_measurements))
-                errors += 1
+                group_errors += 1
+            errors += group_errors
             if cg < 9:
                 front_t_arr.append(t)
+                self.front_errors += group_errors
             else:
                 back_t_arr.append(t)
+                self.back_errors += group_errors
             v_arr.append(v)
         if errors > 0 and self.loop.value == 1:
             self.beetle.logger.error('disabling evcc loop due to error(s)')

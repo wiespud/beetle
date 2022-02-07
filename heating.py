@@ -36,16 +36,18 @@ class BatteryHeater:
         if delta < 60.0 and delta > 0.0:
             return
         self.last_poll = now
-        if now - self.beetle.bms.last_poll > HOLDOFF:
-            self.beetle.logger.error('temperature data is too stale')
+        ''' turn heat off if there are bms errors '''
+        if self.beetle.bms.front_errors > 0 and self.front_heat.value == 1:
             self.front_heat.off()
+            self.beetle.logger.info('front heat off due to bms errors')
+        if self.beetle.bms.back_errors > 0 and self.back_heat.value == 1:
             self.back_heat.off()
-            return
+            self.beetle.logger.info('back heat off due to bms errors')
         ''' turn heat on or off based on average temperatures from bms '''
         on_temp = float(self.beetle.state.get('heat_on_c'))
         off_temp = float(self.beetle.state.get('heat_off_c'))
         if self.beetle.bms.front_t_av <= on_temp:
-            if self.front_heat.value == 0:
+            if self.front_heat.value == 0 and self.beetle.bms.front_errors == 0:
                 self.front_heat.on()
                 self.beetle.logger.info('front heat on')
         elif self.beetle.bms.front_t_av >= off_temp:
@@ -54,7 +56,7 @@ class BatteryHeater:
                 self.beetle.logger.info('front heat off')
 
         if self.beetle.bms.back_t_av <= on_temp:
-            if self.back_heat.value == 0:
+            if self.back_heat.value == 0 and self.beetle.bms.back_errors == 0:
                 self.back_heat.on()
                 self.beetle.logger.info('back heat on')
         elif self.beetle.bms.back_t_av >= off_temp:

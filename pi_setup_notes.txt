@@ -30,27 +30,38 @@ generate passwordless rsa keys
 ssh-keygen -t rsa
 
 
+disable timesyncd before installing ntp
+sudo systemctl stop systemd-timesyncd
+sudo systemctl disable systemd-timesyncd
+
+
 change apt to use apt-cache-ng server
 create /etc/apt/apt.conf.d/02proxy with this in it:
 Acquire::http::Proxy "http://c720.local:3142";
 
 
+set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) in /etc/dhcpcd.conf
+
+
 run `sudo apt update` and `sudo apt upgrade` and then install packages
 
-sudo apt install screen vim python3-pip python3-gpiozero python3-smbus python3-zmq apache2 python3-geopy
+sudo apt install ntp screen vim python3-pip python3-gpiozero python3-smbus python3-zmq apache2 python3-geopy
 sudo pip install gpsd-py3
 
 (beetle-front only)
 sudo apt install gpsd gpsd-clients
-add /dev/ttyACM0 to /etc/default/gpsd and run `sudo service gpsd restart`
+in /etc/default/gpsd add /dev/ttyACM0 to devices and -n to options
+in /etc/ntp.conf add the following:
+server 127.127.28.0 prefer
+fudge 127.127.28.0 time1 0.075 refid GPS
 
 (beetle-back only)
 
 sudo apt install minicom
 change 1-wire pin to 16 by adding "dtoverlay=w1-gpio,gpiopin=16" in /boot/config.txt
-
-
-set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) in /etc/dhcpcd.conf
+in /etc/ntp.conf add the following:
+server 10.10.10.1 prefer
+fudge 10.10.10.1 refid GPS
 
 
 enable second i2c bus by adding "dtparam=i2c_vc=on" in /boot/config.txt
