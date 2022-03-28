@@ -53,12 +53,21 @@ class ADC:
         self.count = { 1 : 5, 2 : 3 }
         self.values = { 1 : [], 2 : [] }
         self.adjust = { 1 : (3.31, 1.0), 2 : (1.0, 0.0) }
-        nau.voltage_setup(self.bus, self.ch)
-        nau.start_measurement(self.bus)
+        self.setup_and_start()
         self.beetle.logger.info('ADC poller initialized')
 
+    def setup_and_start(self):
+        try:
+            nau.voltage_setup(self.bus, self.ch)
+            nau.start_measurement(self.bus)
+        except OSError:
+            self.beetle.logger.error('Failed to set up and start measurement on ch. %d' % self.ch)
+
     def poll(self):
-        v_nau = nau.get_voltage(self.bus)
+        try:
+            v_nau = nau.get_voltage(self.bus)
+        except OSError:
+            self.beetle.logger.error('Failed to get ch. %d voltage' % self.ch)
         scale, offset = self.adjust[self.ch]
         v = v_nau * scale + offset
         self.values[self.ch].append(v)
@@ -73,8 +82,7 @@ class ADC:
             ''' Ch. 2 is current sensor '''
             self.beetle.state.set('v_i_sense', '%.3f' % v_av)
             self.ch = 1
-        nau.voltage_setup(self.bus, self.ch)
-        nau.start_measurement(self.bus)
+        self.setup_and_start()
 
 class Charger:
     ''' Charger '''
@@ -221,27 +229,23 @@ class Gpio:
     def poll(self):
         for name in self.inputs:
             new_value = self.inputs[name].pin.value
-            # TODO: check if this gpio has a timeout in the state table
-            if True: # new_value != self.inputs[name].prev_value:
-                self.beetle.state.set(name, new_value)
-                self.inputs[name].prev_value = new_value
+            self.beetle.state.set(name, new_value)
 
 class GpioInput:
     ''' GPIO input class '''
     def __init__(self, pin, name, beetle):
         self.pin = gpiozero.InputDevice(pin, pull_up=True)
-        self.prev_value = self.pin.value
-        beetle.state.set(name, self.prev_value)
+        beetle.state.set(name, self.pin.value)
 
 class GPS:
     ''' GSP receiver class '''
     def __init__(self, beetle):
         self.beetle = beetle
         gpsd.connect()
-        # ~ self.position = None
-        # ~ self.prev_ignition = self.beetle.gpio.get('ignition')
-        # ~ self.trip = float(self.beetle.state.get('trip_odometer'))
-        # ~ self.charge = float(self.beetle.state.get('charge_odometer'))
+        self.position = None
+        self.prev_ignition = self.beetle.state.get('ignition')
+        self.trip = float(self.beetle.state.get('trip_odometer'))
+        self.charge = float(self.beetle.state.get('charge_odometer'))
         self.beetle.logger.info('GPS poller initialized')
 
     def poll(self):
@@ -251,20 +255,20 @@ class GPS:
             self.beetle.state.set('lon', '%.9f' % packet.lon)
             speed_str = '%.0f' % (packet.speed() * 2.237)
             self.beetle.state.set('speed', speed_str)
-            # ~ new_position = packet.position()
-            # ~ ignition = self.beetle.gpio.get('ignition')
-            # ~ if ignition == 1:
-                # ~ if self.prev_ignition == 0:
-                    # ~ self.trip = float(self.beetle.state.get('trip_odometer'))
-                    # ~ self.charge = float(self.beetle.state.get('charge_odometer'))
-                # ~ if self.position != None:
-                    # ~ d = distance(new_position, self.position).miles
-                    # ~ self.trip += d
-                    # ~ self.charge += d
-                    # ~ self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
-                    # ~ self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
-            # ~ self.prev_ignition = ignition
-            # ~ self.position = new_position
+            new_position = packet.position()
+            ignition = self.beetle.state.get('ignition')
+            if ignition and self.prev_ignition and int(ignition) == 1:
+                if int(self.prev_ignition) == 0:
+                    self.trip = float(self.beetle.state.get('trip_odometer'))
+                    self.charge = float(self.beetle.state.get('charge_odometer'))
+                if self.position != None:
+                    d = distance(new_position, self.position).miles
+                    self.trip += d
+                    self.charge += d
+                    self.beetle.state.set('trip_odometer', '%.1f' % self.trip)
+                    self.beetle.state.set('charge_odometer', '%.1f' % self.charge)
+            self.prev_ignition = ignition
+            self.position = new_position
         except gpsd.NoFixError:
             self.beetle.logger.error('gps signal too low')
 
@@ -288,7 +292,6 @@ class State:
     def __init__(self, beetle):
         self.beetle = beetle
         self.last_poll = 0.0
-        self.temporary_state_file = '/run/user/1000/state.json'
         self.persistent_state_file = '/home/pi/state.json'
         try:
             with open(self.persistent_state_file) as fin:
@@ -332,7 +335,7 @@ class State:
             return
         self.last_poll = now
         self.write_persistent_state()
-        if location == 'back':
+        if self.beetle.location == 'back':
             return
         ''' update usb0 ip in state table '''
         # TODO: find a cleaner way to get the usb0 ip address
