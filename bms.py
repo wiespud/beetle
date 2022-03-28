@@ -18,6 +18,7 @@ class BatteryMonitoringSystem:
         self.beetle = beetle
         self.init_time = time.time()
         self.last_poll = self.init_time
+        self.heartbeat = int(self.init_time)
         # ~ self.last_history = self.init_time - 3600.0 + HOLDOFF
         self.bus = smbus.SMBus(1)
         self.batts = batteries.Batteries(self.bus, self.beetle.location)
@@ -54,8 +55,10 @@ class BatteryMonitoringSystem:
     def sub_thread_func(self):
         while True:
             string = self.sub_sock.recv_string()
-            if 'exit' in string:
-                return
+            if 'heartbeat' in string:
+                if self.beetle.location not in string:
+                    self.heartbeat = int(time.time())
+                continue
             topic, cg, values = string.split()
             cg = int(cg)
             if topic != 'bms':
@@ -64,6 +67,15 @@ class BatteryMonitoringSystem:
             self.state[cg] = (values, int(time.time()))
 
     def poll(self):
+        self.pub_sock.send_string('bms heartbeat %s' % self.beetle.location)
+        ''' check for heartbeat and reconnect to remote publisher '''
+        delta = int(time.time()) - self.heartbeat
+        if delta > 30:
+            if self.beetle.location == 'back':
+                self.sub_sock.connect('tcp://10.10.10.1:5556')
+            else:
+                self.sub_sock.connect('tcp://10.10.10.2:5556')
+        ''' gather and process data '''
         self.gather()
         self.last_poll = time.time()
         if self.beetle.location == 'back':

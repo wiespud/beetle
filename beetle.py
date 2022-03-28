@@ -293,6 +293,7 @@ class State:
     def __init__(self, beetle):
         self.beetle = beetle
         self.last_poll = 0.0
+        self.heartbeat = int(time.time())
 
         # initialize from persistent store of state
         self.persistent_state_file = '/home/pi/state.json'
@@ -336,8 +337,10 @@ class State:
     def sub_thread_func(self):
         while True:
             string = self.sub_sock.recv_string()
-            if 'exit' in string:
-                return
+            if 'heartbeat' in string:
+                if self.beetle.location not in string:
+                    self.heartbeat = int(time.time())
+                continue
             topic, name, value = string.split()
             if topic != 'state':
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
@@ -345,8 +348,16 @@ class State:
             self.state[name] = (value, int(time.time()))
 
     def poll(self):
-        ''' update persistent state every 5 minutes '''
+        self.pub_sock.send_string('state heartbeat %s' % self.beetle.location)
         now = int(time.time())
+        ''' check for heartbeat and reconnect to remote publisher '''
+        delta = now - self.heartbeat
+        if delta > 30:
+            if self.beetle.location == 'back':
+                self.sub_sock.connect('tcp://10.10.10.1:5555')
+            else:
+                self.sub_sock.connect('tcp://10.10.10.2:5555')
+        ''' update persistent state every 5 minutes '''
         delta = now - self.last_poll
         if delta < 300 and delta > 0:
             return
