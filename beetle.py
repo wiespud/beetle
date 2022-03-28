@@ -338,9 +338,10 @@ class State:
         while True:
             string = self.sub_sock.recv_string()
             if 'heartbeat' in string:
-                if self.beetle.location not in string:
+                if self.beetle.location in string:
+                    continue
+                else:
                     self.heartbeat = int(time.time())
-                continue
             topic, name, value = string.split()
             if topic != 'state':
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
