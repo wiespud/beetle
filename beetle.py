@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import flask
 import gpiozero
 import gpsd
 import json
@@ -292,6 +293,8 @@ class State:
     def __init__(self, beetle):
         self.beetle = beetle
         self.last_poll = 0.0
+
+        # initialize from persistent store of state
         self.persistent_state_file = '/home/pi/state.json'
         try:
             with open(self.persistent_state_file) as fin:
@@ -299,6 +302,8 @@ class State:
         except FileNotFoundError:
             self.state = {}
             self.beetle.logger.error('state.json not found')
+
+        # set up zmq pub/sub for keeping state in sync
         self.zmq_ctx = zmq.Context()
         self.pub_sock = self.zmq_ctx.socket(zmq.PUB)
         self.pub_sock.bind('tcp://*:5555')
@@ -310,8 +315,23 @@ class State:
             self.sub_sock.connect('tcp://10.10.10.2:5555')
         self.sub_sock.setsockopt_string(zmq.SUBSCRIBE, 'state')
         self.sub_thread = threading.Thread(target=self.sub_thread_func)
+        self.sub_thread.daemon = True
         self.sub_thread.start()
         self.phone_home_proc = None
+
+        # start flask to serve state to webui
+        self.rest_thread = threading.Thread(target=self.rest_thread_func)
+        self.rest_thread.daemon = True
+        self.rest_thread.start()
+
+    def rest_thread_func(self):
+        api = flask.Flask('state')
+
+        @api.route('/state')
+        def state():
+            return flask.jsonify(self.state)
+
+        api.run(host='0.0.0.0')
 
     def sub_thread_func(self):
         while True:
@@ -323,9 +343,6 @@ class State:
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
                 continue
             self.state[name] = (value, int(time.time()))
-
-    def thread_exit(self):
-        self.pub_sock.send_string('state exit')
 
     def poll(self):
         ''' update persistent state every 5 minutes '''
@@ -469,8 +486,6 @@ class Beetle:
                 prev_ts = now
         except BaseException as e:
             self.logger.error(traceback.format_exc())
-            self.state.thread_exit()
-            self.bms.thread_exit()
             self.state.write_persistent_state()
             raise
 

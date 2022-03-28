@@ -46,6 +46,7 @@ class BatteryMonitoringSystem:
             self.sub_sock.connect('tcp://10.10.10.2:5556')
         self.sub_sock.setsockopt_string(zmq.SUBSCRIBE, 'bms')
         self.sub_thread = threading.Thread(target=self.sub_thread_func)
+        self.sub_thread.daemon = True
         self.sub_thread.start()
 
         self.beetle.logger.info('BMS poller initialized')
@@ -61,9 +62,6 @@ class BatteryMonitoringSystem:
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
                 continue
             self.state[cg] = (values, int(time.time()))
-
-    def thread_exit(self):
-        self.pub_sock.send_string('bms exit')
 
     def poll(self):
         self.gather()

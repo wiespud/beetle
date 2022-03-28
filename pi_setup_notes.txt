@@ -45,7 +45,7 @@ set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) 
 
 run `sudo apt update` and `sudo apt upgrade` and then install packages
 
-sudo apt install ntp screen vim python3-pip python3-gpiozero python3-smbus python3-zmq apache2 python3-geopy
+sudo apt install ntp screen vim python3-pip python3-gpiozero python3-smbus python3-zmq apache2 python3-geopy python3-flask
 sudo pip install gpsd-py3
 
 (beetle-front only)
