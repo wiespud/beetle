@@ -328,6 +328,9 @@ class State:
     def rest_thread_func(self):
         api = flask.Flask('state')
 
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
+
         @api.route('/state')
         def state():
             return flask.jsonify(self.state)
@@ -349,9 +352,16 @@ class State:
             self.state[name] = (value, int(time.time()))
 
     def poll(self):
-        self.pub_sock.send_string('state heartbeat %s' % self.beetle.location)
         now = int(time.time())
-        ''' check for heartbeat and reconnect to remote publisher '''
+        ''' check on threads '''
+        if not self.sub_thread.is_alive():
+            self.beetle.logger.error('state sub thread died')
+            raise OSError
+        if not self.rest_thread.is_alive():
+            self.beetle.logger.error('state rest thread died')
+            raise OSError
+        ''' handle heartbeat and reconnect logic '''
+        self.pub_sock.send_string('state heartbeat %s' % self.beetle.location)
         delta = now - self.heartbeat
         if delta > 30:
             if self.beetle.location == 'back':

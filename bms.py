@@ -67,8 +67,12 @@ class BatteryMonitoringSystem:
             self.state[cg] = (values, int(time.time()))
 
     def poll(self):
+        ''' check on sub thread '''
+        if not self.sub_thread.is_alive():
+            self.beetle.logger.error('bms sub thread died')
+            raise OSError
+        ''' handle heartbeat and reconnect logic '''
         self.pub_sock.send_string('bms heartbeat %s' % self.beetle.location)
-        ''' check for heartbeat and reconnect to remote publisher '''
         delta = int(time.time()) - self.heartbeat
         if delta > 30:
             if self.beetle.location == 'back':
