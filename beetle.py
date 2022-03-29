@@ -331,9 +331,24 @@ class State:
         log = logging.getLogger('werkzeug')
         log.setLevel(logging.ERROR)
 
-        @api.route('/state')
+        @api.route('/state', methods=['GET'])
         def state():
             return flask.jsonify(self.state)
+
+        @api.route('/button', methods=['POST'])
+        def button():
+            button = flask.request.get_data().decode("utf-8")
+            if button == 'reset':
+                self.beetle.state.set('trip_odometer', '0.0')
+            elif button in 'enable':
+                self.beetle.state.set('charger', 'enabled')
+            elif button == 'disable':
+                self.beetle.state.set('charger', 'disabled')
+            elif button == 'once':
+                self.beetle.state.set('charger', 'once')
+            else:
+                return 'fail', 400
+            return 'success', 200
 
         api.run(host='0.0.0.0')
 
