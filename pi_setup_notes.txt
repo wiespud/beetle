@@ -45,7 +45,7 @@ set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) 
 
 run `sudo apt update` and `sudo apt upgrade` and then install packages
 
-sudo apt install ntp screen vim python3-pip python3-gpiozero python3-smbus python3-zmq apache2 python3-geopy python3-flask
+sudo apt install nginx ntp screen vim python3-pip python3-gpiozero python3-smbus python3-zmq python3-geopy python3-flask
 sudo pip install gpsd-py3
 
 (beetle-front only)
@@ -56,12 +56,24 @@ server 127.127.28.0 prefer
 fudge 127.127.28.0 time1 0.075 refid GPS
 
 (beetle-back only)
-
 sudo apt install minicom
 change 1-wire pin to 16 by adding "dtoverlay=w1-gpio,gpiopin=16" in /boot/config.txt
 in /etc/ntp.conf add the following:
 server 10.10.10.1 prefer
 fudge 10.10.10.1 refid GPS
+
+
+add pi to www-data group and change group ownership of /var/www/html to www-data
+sudo usermod -a -G www-data pi
+sudo chown -R www-data /var/www/html
+sudo chgrp -R www-data /var/www/html
+sudo chmod -R 775 /var/www/html
+
+
+add this section to /etc/nginx/sites-available/default
+	location /rest/ {
+		proxy_pass http://localhost:5000/;
+	}
 
 
 enable second i2c bus by adding "dtparam=i2c_vc=on" in /boot/config.txt

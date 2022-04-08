@@ -337,7 +337,7 @@ class State:
 
         @api.route('/button', methods=['POST'])
         def button():
-            button = flask.request.get_data().decode("utf-8")
+            button = flask.request.get_data().decode('utf-8')
             if button == 'reset':
                 self.beetle.state.set('trip_odometer', '0.0')
             elif button in 'enable':
@@ -347,6 +347,7 @@ class State:
             elif button == 'once':
                 self.beetle.state.set('charger', 'once')
             else:
+                self.beetle.logger.error('unexpected button %s' % button)
                 return 'fail', 400
             return 'success', 200
 
@@ -355,15 +356,14 @@ class State:
     def sub_thread_func(self):
         while True:
             string = self.sub_sock.recv_string()
-            if 'heartbeat' in string:
-                if self.beetle.location in string:
-                    continue
-                else:
-                    self.heartbeat = int(time.time())
             topic, name, value = string.split()
             if topic != 'state':
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
                 continue
+            if name == 'heartbeat':
+                if value != self.beetle.location:
+                    self.heartbeat = int(time.time())
+                name = name + '_' + value
             self.state[name] = (value, int(time.time()))
 
     def poll(self):
