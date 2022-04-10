@@ -242,6 +242,11 @@ class GPS:
     ''' GSP receiver class '''
     def __init__(self, beetle):
         self.beetle = beetle
+        try:
+            subprocess.check_call('gpsctl --nmea /dev/ttyACM0', shell=True)
+        except subprocess.CalledProcessError:
+            self.beetle.logger.error('failed to set gps to nmea mode')
+            pass
         gpsd.connect()
         self.position = None
         self.prev_ignition = self.beetle.state.get('ignition')
