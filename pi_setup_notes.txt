@@ -89,4 +89,29 @@ add crontab entry:
 create /var/log/beetle and make it writable by pi user
 
 
+scp state.json pi@beetle-front.local:~/
+scp state.json pi@beetle-back.local:~/
+
+
+sudo reboot
+
+
+
+
+
+
+
+On home pi that serves public webui:
+
+add pi to www-data group and change group ownership of /var/www/html to www-data
+sudo usermod -a -G www-data pi
+sudo chown -R www-data /var/www/html
+sudo chgrp -R www-data /var/www/html
+sudo chmod -R 775 /var/www/html
+
+copy py and web files onto pi (can use install.sh)
+
+add crontab entry:
+@reboot /var/www/html/beetle/beetle_state.py &
+
 sudo reboot

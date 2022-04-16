@@ -6,6 +6,7 @@ import gpsd
 import json
 import logging
 import os
+import requests
 import smbus
 import socket
 import subprocess
@@ -323,7 +324,6 @@ class State:
         self.sub_thread = threading.Thread(target=self.sub_thread_func)
         self.sub_thread.daemon = True
         self.sub_thread.start()
-        self.phone_home_proc = None
 
         # start flask to serve state to webui
         self.rest_thread = threading.Thread(target=self.rest_thread_func)
@@ -388,7 +388,7 @@ class State:
                 self.sub_sock.connect('tcp://10.10.10.1:5555')
             else:
                 self.sub_sock.connect('tcp://10.10.10.2:5555')
-        ''' update persistent state every 5 minutes '''
+        ''' update persistent state and phone home every 5 minutes '''
         delta = now - self.last_poll
         if delta < 300 and delta > 0:
             return
@@ -407,13 +407,11 @@ class State:
         # ~ except subprocess.CalledProcessError:
             # ~ pass
         ''' phone home '''
-        if self.phone_home_proc != None and self.phone_home_proc.poll() == None:
-            self.phone_home_proc.kill()
-        # TODO: phone home through LTE connection when not at home
-        cmd = ['scp', self.persistent_state_file,
-               'pi@basement.local:/var/www/html/beetle/state.json']
-        self.phone_home_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
-                                                stderr=subprocess.STDOUT)
+        home_url = 'https://crystalpalace.ddns.net/beetle/rest/state'
+        r = requests.post(home_url, json=self.state)
+        if r.status_code != 200:
+            self.beetle.logger.error('phone home got status '
+                                     'code %d' % r.status_code)
 
     def write_persistent_state(self):
         with open(self.persistent_state_file, 'w+') as fout:

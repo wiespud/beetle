@@ -37,6 +37,14 @@
                         elem.style.backgroundColor = 'grey';
                     }
                 }
+
+                // handle location url
+                var locElem = document.getElementById('location');
+                var url = 'https://www.google.com/maps/search/?api=1&query=';
+                url += state['lat']['value'];
+                url += ',';
+                url += state['lon']['value'];
+                locElem.setAttribute('href', url);
             }
 
             function refresh() {
@@ -56,15 +64,16 @@
                 refresh();
                 var int = self.setInterval(function () {
                     refresh();
-                }, 500);
+                }, 5000);
             }
 
             function button(elem) {
-                $.ajax({
-                    url: 'rest/button',
-                    type: 'post',
-                    data: elem.className
-                });
+                console.log('button not implemented')
+                 //~ $.ajax({
+                    //~ url: 'rest/button',
+                    //~ type: 'post',
+                    //~ data: elem.className
+                //~ });
             }
 
         </script>
@@ -73,23 +82,26 @@
     <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:400%;'>
 
         <div style='position:absolute;top:10px;right:10px;'>
-            AC <span class='led' id='ac_present' timeout=10 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+            AC <span class='led' id='ac_present' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
-        <div style='position:absolute;top:35px;right:10px;'>
-            Charger <span class='led' id='charging' timeout=10 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+        <div style='position:absolute;top:30px;right:10px;'>
+            Charger <span class='led' id='charging' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
-        <div style='position:absolute;top:60px;right:10px;'>
-            DCDC <span class='led' id='dcdc' timeout=10 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+        <div style='position:absolute;top:50px;right:10px;'>
+            DCDC <span class='led' id='dcdc' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
-        <div style='position:absolute;top:85px;right:10px;'>
-            Fan <span class='led' id='controller_fan' timeout=10 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+        <div style='position:absolute;top:70px;right:10px;'>
+            Fan <span class='led' id='controller_fan' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
 
-        <div style='font-size:2.5em;'><a class='updateme' id='v' timeout=10></a> V</div>
-        <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt' timeout=10></a> V</div>
-        <div>Min: <a class='updateme' id='v_min' timeout=10></a> V&nbsp;&nbsp;&nbsp;&nbsp;Max: <a class='updateme' id='v_max' timeout=10></a> V</div>
-        <div>Front: <a class='updateme' id='front_t_av' timeout=10></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av' timeout=10></a> C</div>
-        <div style='margin-bottom:10px;'>Controller: <a class='updateme' id='controller_temp' timeout=90></a> C</div>
+        <a id='location' href='https://www.google.com/maps/' style='position:absolute;top:600px;right:32px;zoom:16%;'><img src='maps.ico'/></a>
+        <div class='updateme' id='ip' style='position:absolute;top:225px;right:18px;zoom:60%;'>00.00</div>
+
+        <div style='font-size:2.5em;'><a class='updateme' id='v' timeout=600></a> V</div>
+        <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt' timeout=600></a> V</div>
+        <div>Min: <a class='updateme' id='v_min' timeout=600></a> V&nbsp;&nbsp;&nbsp;&nbsp;Max: <a class='updateme' id='v_max' timeout=600></a> V</div>
+        <div>Front: <a class='updateme' id='front_t_av' timeout=600></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av' timeout=600></a> C</div>
+        <div style='margin-bottom:10px;'>Controller: <a class='updateme' id='controller_temp' timeout=600></a> C</div>
 
         <div>Trip Odometer <button class='reset' onclick='button(this)' style='background-color:silver'>Reset</button></div>
         <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='trip_odometer' timeout=0></a> mi</div>
