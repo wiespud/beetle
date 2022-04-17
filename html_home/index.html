@@ -41,9 +41,9 @@
                 // handle location url
                 var locElem = document.getElementById('location');
                 var url = 'https://www.google.com/maps/search/?api=1&query=';
-                url += state['lat']['value'];
+                url += state['lat'][0];
                 url += ',';
-                url += state['lon']['value'];
+                url += state['lon'][0];
                 locElem.setAttribute('href', url);
             }
 

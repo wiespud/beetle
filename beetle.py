@@ -398,16 +398,17 @@ class State:
             return
         ''' update usb0 ip in state table '''
         # TODO: find a cleaner way to get the usb0 ip address
-        # ~ cmd = ['ip', 'addr', 'show', 'dev', 'usb0']
-        # ~ try:
-            # ~ output = subprocess.check_output(cmd)
-            # ~ if 'inet 192.168.' in output:
-                # ~ ip = output.split('inet 192.168.')[1].split('/')[0]
-                # ~ self.beetle.state.set('ip', ip)
-        # ~ except subprocess.CalledProcessError:
-            # ~ pass
+        cmd = ['ip', 'addr', 'show', 'dev', 'usb0']
+        try:
+            output = subprocess.check_output(cmd)
+            output = output.decode('utf-8')
+            if 'inet 192.168.' in output:
+                ip = output.split('inet 192.168.')[1].split('/')[0]
+                self.beetle.state.set('ip', ip)
+        except subprocess.CalledProcessError:
+            pass
         ''' phone home '''
-        home_url = 'https://crystalpalace.ddns.net/beetle/rest/state'
+        home_url = 'https://housejohns.com/beetle/rest/state'
         r = requests.post(home_url, json=self.state)
         if r.status_code != 200:
             self.beetle.logger.error('phone home got status '
@@ -461,7 +462,9 @@ class WiFi:
         lon = self.beetle.state.get('lon')
         ac_present = self.beetle.gpio.get('ac_present')
         cmd = 'ip link show dev wlan0'
-        up = 'state UP' in subprocess.check_output(cmd, shell=True)
+        output = subprocess.check_output(cmd, shell=True)
+        output = output.decode('utf-8')
+        up = 'state UP' in output
         ''' determine if wlan0 state needs to change '''
         action = None
         if mode == 'disabled':
