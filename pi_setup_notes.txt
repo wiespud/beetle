@@ -41,6 +41,12 @@ Acquire::http::Proxy "http://c720.local:3142";
 
 
 set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) in /etc/dhcpcd.conf
+also set route metrics to make sure wlan0 is used instead of usb0 when at home
+https://www.jeffgeerling.com/blog/2022/network-interface-routing-priority-on-raspberry-pi
+
+# Give LTE connection a higher metric so wifi is used when available
+interface usb0
+metric 404
 
 
 run `sudo apt update` and `sudo apt upgrade` and then install packages
