@@ -7,15 +7,17 @@
         <script type='text/javascript'>
 
             function update(state) {
+                var now = Math.round(Date.now() / 1000);
+
                 // handle updateme class elements
                 var elems = document.getElementsByClassName('updateme');
-                var now = Math.round(Date.now() / 1000);
                 for (var i = 0; i < elems.length; i++) {
                     var elem = elems[i];
                     elem.innerText = state[elem.id][0];
                     var ts = state[elem.id][1];
-                    if (elem.timeout > 0) {
-                        if (now > ts + elem.timeout) {
+                    var timeout = elem.getAttribute('timeout')
+                    if (+timeout > 0) {
+                        if (now > +ts + +timeout) {
                             elem.style.color = 'red';
                         } else {
                             elem.style.color = 'silver';
@@ -27,8 +29,9 @@
                 var elems = document.getElementsByClassName('led');
                 for (var i = 0; i < elems.length; i++) {
                     var elem = elems[i];
-                    var ts = state[elem.id]['ts'];
-                    if (elem.timeout > 0.0 && now > ts + elem.timeout) {
+                    var ts = state[elem.id][1];
+                    var timeout = elem.getAttribute('timeout')
+                    if (+timeout > 0 && now > +ts + +timeout) {
                         elem.style.backgroundColor = 'red';
                     } else if (state[elem.id][0] == 'enabled' ||
                                state[elem.id][0] == '1') {
@@ -88,10 +91,10 @@
             Charger <span class='led' id='charging' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:50px;right:10px;'>
-            DCDC <span class='led' id='dcdc' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+            DCDC <span class='led' id='dcdc' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:70px;right:10px;'>
-            Fan <span class='led' id='controller_fan' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+            Fan <span class='led' id='controller_fan' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
 
         <a id='location' href='https://www.google.com/maps/' style='position:absolute;top:600px;right:32px;zoom:16%;'><img src='maps.ico'/></a>
@@ -104,12 +107,12 @@
         <div style='margin-bottom:10px;'>Controller: <a class='updateme' id='controller_temp' timeout=600></a> C</div>
 
         <div>Trip Odometer <button class='reset' onclick='button(this)' style='background-color:silver'>Reset</button></div>
-        <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='trip_odometer' timeout=0></a> mi</div>
+        <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='trip_odometer'></a> mi</div>
 
         <div>Charge Odometer</div>
-        <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='charge_odometer' timeout=0></a> mi</div>
+        <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='charge_odometer'></a> mi</div>
 
-        <div style='margin-bottom:2px;'>Charger: <a class='updateme' id='charger' timeout=0></a></div>
+        <div style='margin-bottom:2px;'>Charger: <a class='updateme' id='charger'></a></div>
         <div>
             <button class='enable' onclick='button(this)' style='background-color:silver'>Enable</button>
             <button class='disable' onclick='button(this)' style='background-color:silver'>Disable</button>
