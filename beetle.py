@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import errno
 import flask
 import gpiozero
 import gpsd
@@ -408,11 +409,24 @@ class State:
         except subprocess.CalledProcessError:
             pass
         ''' phone home '''
+        # TODO: move this to a thread
         home_url = 'https://housejohns.com/beetle/rest/state'
-        r = requests.post(home_url, json=self.state)
-        if r.status_code != 200:
-            self.beetle.logger.error('phone home got status '
-                                     'code %d' % r.status_code)
+        try:
+            r = requests.post(home_url, json=self.state)
+            if r.status_code != 200:
+                self.beetle.logger.error('phone home got status '
+                                         'code %d' % r.status_code)
+        except OSError as e:
+            if e.errno == errno.ENETUNREACH:
+                self.beetle.logger.error('phone home failed due '
+                                         'to unreachable network')
+            elif e.errno == errno.ETIMEDOUT:
+                self.beetle.logger.error('phone home failed due '
+                                         'to network timeout')
+            else:
+                raise
+        except requests.exceptions.ConnectionError:
+            self.beetle.logger.error('phone home failed due to network fault')
 
     def write_persistent_state(self):
         with open(self.persistent_state_file, 'w+') as fout:
