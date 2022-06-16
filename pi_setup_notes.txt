@@ -37,16 +37,14 @@ sudo systemctl disable systemd-timesyncd
 
 change apt to use apt-cache-ng server
 create /etc/apt/apt.conf.d/02proxy with this in it:
-Acquire::http::Proxy "http://c720.local:3142";
+Acquire::http::Proxy "http://<host>:3142";
 
 
 set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) in /etc/dhcpcd.conf
-also set route metrics to make sure wlan0 is used instead of usb0 when at home
-https://www.jeffgeerling.com/blog/2022/network-interface-routing-priority-on-raspberry-pi
+also request a specific ip address for usb0 so that the webui is parked in a known location and the default route gets set up for usb0
 
-# Give LTE connection a higher metric so wifi is used when available
 interface usb0
-metric 404
+request 192.168.42.42
 
 
 run `sudo apt update` and `sudo apt upgrade` and then install packages

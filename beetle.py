@@ -24,28 +24,6 @@ import ds
 import heating
 import nau
 
-def setup_logger(name):
-    formatter = logging.Formatter(fmt='%(asctime)s %(levelname)-8s %(message)s',
-                                  datefmt='%Y-%m-%d %H:%M:%S')
-    handler = RotatingFileHandler('/var/log/beetle/%s.log' % name,
-                                  maxBytes=1024*1024, backupCount=5)
-    handler.setFormatter(formatter)
-    logger = logging.getLogger(name)
-    logger.setLevel(logging.INFO)
-    logger.addHandler(handler)
-    return logger
-
-def at_home(lat, lon):
-    '''
-    west bound: -93.3555
-    east bound: -93.3545
-    north bound: 45.0180
-    south bound: 45.0167
-    '''
-    if lat < 45.0180 and lat > 45.0167 and lon < -93.3545 and lon > -93.3555:
-        return True
-    return False
-
 class ADC:
     ''' ADC that measures 12V battery voltage and current sensor output '''
     def __init__(self, beetle):
@@ -200,7 +178,15 @@ class DCDC:
             self.next_poll = 60
             return
         ''' on at 12V for at least 1 minute, off at 12.5V '''
-        v_acc = float(self.beetle.state.get('v_acc_batt'))
+        try:
+            v_acc = float(self.beetle.state.get('v_acc_batt'))
+        except TypeError:
+            if self.pin.value == 1:
+                self.beetle.logger.info('turning off dcdc due to error')
+                self.pin.off()
+                self.beetle.state.set('dcdc', 'disabled')
+                self.next_poll = 60
+            return
         if v_acc < 12.0 and self.pin.value == 0:
             self.beetle.logger.info('turning on dcdc')
             self.pin.on()
@@ -213,7 +199,7 @@ class DCDC:
             self.next_poll = 5
 
 class Gpio:
-    ''' State class '''
+    ''' GPIO class '''
     def __init__(self, beetle):
         self.beetle = beetle
         self.inputs = {}
@@ -310,6 +296,9 @@ class State:
         except FileNotFoundError:
             self.state = {}
             self.beetle.logger.error('state.json not found')
+        except json.decoder.JSONDecodeError:
+            self.state = {}
+            self.beetle.logger.error('state.json invalid format')
 
         # set up zmq pub/sub for keeping state in sync
         self.zmq_ctx = zmq.Context()
@@ -330,6 +319,12 @@ class State:
         self.rest_thread = threading.Thread(target=self.rest_thread_func)
         self.rest_thread.daemon = True
         self.rest_thread.start()
+
+        # start thread to phone home from front pi LTE connection
+        if self.beetle.location == 'front':
+            self.phone_home_thread = threading.Thread(target=self.phone_home_thread_func)
+            self.phone_home_thread.daemon = True
+            self.phone_home_thread.start()
 
     def rest_thread_func(self):
         api = flask.Flask('state')
@@ -372,6 +367,19 @@ class State:
                 name = name + '_' + value
             self.state[name] = (value, int(time.time()))
 
+    def phone_home_thread_func(self):
+        home_url = 'https://housejohns.com/beetle/rest/state'
+        while True:
+            try:
+                r = requests.post(home_url, json=self.state)
+                if r.status_code != 200:
+                    self.beetle.logger.error('phone home got status '
+                                             'code %d' % r.status_code)
+            except requests.exceptions.RequestException as e:
+                self.beetle.logger.error('phone home failed due '
+                                         'to %s' % type(e).__name__)
+            time.sleep(300)
+
     def poll(self):
         now = int(time.time())
         ''' check on threads '''
@@ -389,44 +397,12 @@ class State:
                 self.sub_sock.connect('tcp://10.10.10.1:5555')
             else:
                 self.sub_sock.connect('tcp://10.10.10.2:5555')
-        ''' update persistent state and phone home every 5 minutes '''
+        ''' update persistent state every 5 minutes '''
         delta = now - self.last_poll
         if delta < 300 and delta > 0:
             return
         self.last_poll = now
         self.write_persistent_state()
-        if self.beetle.location == 'back':
-            return
-        ''' update usb0 ip in state table '''
-        # TODO: find a cleaner way to get the usb0 ip address
-        cmd = ['ip', 'addr', 'show', 'dev', 'usb0']
-        try:
-            output = subprocess.check_output(cmd)
-            output = output.decode('utf-8')
-            if 'inet 192.168.' in output:
-                ip = output.split('inet 192.168.')[1].split('/')[0]
-                self.beetle.state.set('ip', ip)
-        except subprocess.CalledProcessError:
-            pass
-        ''' phone home '''
-        # TODO: move this to a thread
-        home_url = 'https://housejohns.com/beetle/rest/state'
-        try:
-            r = requests.post(home_url, json=self.state)
-            if r.status_code != 200:
-                self.beetle.logger.error('phone home got status '
-                                         'code %d' % r.status_code)
-        except OSError as e:
-            if e.errno == errno.ENETUNREACH:
-                self.beetle.logger.error('phone home failed due '
-                                         'to unreachable network')
-            elif e.errno == errno.ETIMEDOUT:
-                self.beetle.logger.error('phone home failed due '
-                                         'to network timeout')
-            else:
-                raise
-        except requests.exceptions.ConnectionError:
-            self.beetle.logger.error('phone home failed due to network fault')
 
     def write_persistent_state(self):
         with open(self.persistent_state_file, 'w+') as fout:
@@ -457,54 +433,11 @@ class State:
     def set(self, name, value):
         self.pub_sock.send_string('state %s %s' % (name, value))
 
-class WiFi:
-    ''' WiFi '''
-    def __init__(self, beetle):
-        self.beetle = beetle
-        self.last_poll = 0.0
-        self.beetle.logger.info('WiFi poller initialized')
-
-    def poll(self):
-        now = time.time()
-        delta = now - self.last_poll
-        if delta < 60.0 and delta > 0.0:
-            return
-        self.last_poll = now
-        ''' get current setting and state '''
-        mode = self.beetle.state.get('wifi')
-        lat = self.beetle.state.get('lat')
-        lon = self.beetle.state.get('lon')
-        ac_present = self.beetle.gpio.get('ac_present')
-        cmd = 'ip link show dev wlan0'
-        output = subprocess.check_output(cmd, shell=True)
-        output = output.decode('utf-8')
-        up = 'state UP' in output
-        ''' determine if wlan0 state needs to change '''
-        action = None
-        if mode == 'disabled':
-            if up:
-                action = 'down'
-        elif mode == 'on_ac':
-            if not up and ac_present == 1:
-                action = 'up'
-        elif mode == 'at_home':
-            if not up and at_home(lat, lon):
-                action = 'up'
-        else: # mode == 'always':
-            if not up:
-                action = 'up'
-        ''' change wlan0 state if necessary '''
-        if action == None:
-            return
-        cmd = 'sudo ip link set %s wlan0' % action
-        subprocess.call(cmd, shell=True)
-        self.beetle.logger.info('wlan0 %s' % action)
-
 class Beetle:
     ''' Integration class for all the components of the car '''
     def __init__(self, location):
         self.location = location
-        self.logger = setup_logger('beetle')
+        self.logger = self.setup_logger('beetle')
         self.pollers = []
         ''' set up common pollers '''
         self.state = State(self)
@@ -513,7 +446,6 @@ class Beetle:
         self.pollers.append(self.bms)
         self.gpio = Gpio(self)
         self.pollers.append(self.gpio)
-        # ~ self.pollers.append(WiFi(self))
         if location == 'back':
             ''' turn off dash light '''
             self.dash_light = gpiozero.OutputDevice(27, active_high=False)
@@ -527,6 +459,17 @@ class Beetle:
         else:
             ''' set up front-only pollers '''
             self.pollers.append(GPS(self))
+
+    def setup_logger(self, name):
+        formatter = logging.Formatter(fmt='%(asctime)s %(levelname)-8s %(message)s',
+                                      datefmt='%Y-%m-%d %H:%M:%S')
+        handler = RotatingFileHandler('/var/log/beetle/%s.log' % name,
+                                      maxBytes=1024*1024, backupCount=5)
+        handler.setFormatter(formatter)
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        return logger
 
     def poll(self):
         ''' Repeat tasks forever at desired frequences '''

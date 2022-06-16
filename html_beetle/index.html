@@ -68,6 +68,7 @@
                     type: 'post',
                     data: elem.className
                 });
+                refresh();
             }
 
         </script>
@@ -78,13 +79,13 @@
         <div style='position:absolute;top:10px;right:10px;'>
             AC <span class='led' id='ac_present' timeout=10 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
-        <div style='position:absolute;top:35px;right:10px;'>
+        <div style='position:absolute;top:30px;right:10px;'>
             Charger <span class='led' id='charging' timeout=10 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
-        <div style='position:absolute;top:60px;right:10px;'>
+        <div style='position:absolute;top:50px;right:10px;'>
             DCDC <span class='led' id='dcdc' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
-        <div style='position:absolute;top:85px;right:10px;'>
+        <div style='position:absolute;top:70px;right:10px;'>
             Fan <span class='led' id='controller_fan' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
 

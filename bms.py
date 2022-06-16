@@ -16,8 +16,9 @@ class BatteryMonitoringSystem:
     ''' BMS class '''
     def __init__(self, beetle):
         self.beetle = beetle
+        self.logger = self.beetle.setup_logger('bms')
         self.init_time = time.time()
-        self.last_poll = self.init_time
+        # ~ self.last_poll = self.init_time
         self.heartbeat = int(self.init_time)
         # ~ self.last_history = self.init_time - 3600.0 + HOLDOFF
         self.bus = smbus.SMBus(1)
@@ -65,6 +66,8 @@ class BatteryMonitoringSystem:
                 self.beetle.logger.error('unexpected zmq topic %s' % topic)
                 continue
             self.state[cg] = (values, int(time.time()))
+            if self.beetle.gpio.get('ignition') == 1:
+                self.logger.info('%d,%s' % (cg, values))
 
     def poll(self):
         ''' check on sub thread '''
@@ -81,7 +84,7 @@ class BatteryMonitoringSystem:
                 self.sub_sock.connect('tcp://10.10.10.2:5556')
         ''' gather and process data '''
         self.gather()
-        self.last_poll = time.time()
+        # ~ self.last_poll = time.time()
         if self.beetle.location == 'back':
             self.process()
             ''' record history at a variable rate '''
