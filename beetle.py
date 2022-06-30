@@ -164,6 +164,15 @@ class DCDC:
         self.beetle.logger.info('DCDC poller initialized')
 
     def poll(self):
+        ''' always have dcdc on while car (ignition) is on '''
+        ignition = self.beetle.gpio.get('ignition')
+        if ignition == 1:
+            if self.pin.value == 0:
+                self.beetle.logger.info('turning on dcdc due to ignition')
+                self.pin.on()
+                self.beetle.state.set('dcdc', 'enabled')
+            return
+        ''' '''
         now = time.time()
         delta = now - self.last_poll
         if delta < self.next_poll and delta > 0.0:
@@ -188,7 +197,7 @@ class DCDC:
                 self.next_poll = 60
             return
         if v_acc < 12.0 and self.pin.value == 0:
-            self.beetle.logger.info('turning on dcdc')
+            self.beetle.logger.info('turning on dcdc due to low voltage')
             self.pin.on()
             self.beetle.state.set('dcdc', 'enabled')
             self.next_poll = 60
