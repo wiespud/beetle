@@ -86,10 +86,10 @@
     <body onload='init()' style='font-family:arial;font-weight:bold;color:silver;background-color:black;zoom:400%;'>
 
         <div style='position:absolute;top:10px;right:10px;'>
-            AC <span class='led' id='ac_present' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+            AC <span class='led' id='ac_present' timeout=300 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:30px;right:10px;'>
-            Charger <span class='led' id='charging' timeout=600 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
+            Charger <span class='led' id='charging' timeout=300 style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
         </div>
         <div style='position:absolute;top:50px;right:10px;'>
             DCDC <span class='led' id='dcdc' style='height:12px;width:12px;background-color:green;border-radius:50%;display:inline-block;'></span>
@@ -100,11 +100,11 @@
 
         <a id='location' href='https://www.google.com/maps/' style='position:absolute;top:600px;right:32px;zoom:16%;'><img src='maps.ico'/></a>
 
-        <div style='font-size:2.5em;'><a class='updateme' id='v' timeout=600></a> V</div>
-        <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt' timeout=600></a> V</div>
-        <div>Min: <a class='updateme' id='v_min' timeout=600></a> V&nbsp;&nbsp;&nbsp;&nbsp;Max: <a class='updateme' id='v_max' timeout=600></a> V</div>
-        <div>Front: <a class='updateme' id='front_t_av' timeout=600></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av' timeout=600></a> C</div>
-        <div style='margin-bottom:10px;'>Controller: <a class='updateme' id='controller_temp' timeout=600></a> C</div>
+        <div style='font-size:2.5em;'><a class='updateme' id='v' timeout=300></a> V</div>
+        <div style='font-size:2.5em;'><a class='updateme' id='v_acc_batt' timeout=300></a> V</div>
+        <div>Min: <a class='updateme' id='v_min' timeout=300></a> V&nbsp;&nbsp;&nbsp;&nbsp;Max: <a class='updateme' id='v_max' timeout=300></a> V</div>
+        <div>Front: <a class='updateme' id='front_t_av' timeout=300></a> C&nbsp;&nbsp;&nbsp;&nbsp;Back: <a class='updateme' id='back_t_av' timeout=300></a> C</div>
+        <div style='margin-bottom:10px;'>Controller: <a class='updateme' id='controller_temp' timeout=300></a> C</div>
 
         <div>Trip Odometer <button class='reset' onclick='button(this)' style='background-color:silver'>Reset</button></div>
         <div style='font-size:2.5em;margin-bottom:10px;'><a class='updateme' id='trip_odometer'></a> mi</div>

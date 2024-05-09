@@ -35,16 +35,11 @@ sudo systemctl stop systemd-timesyncd
 sudo systemctl disable systemd-timesyncd
 
 
-change apt to use apt-cache-ng server
-create /etc/apt/apt.conf.d/02proxy with this in it:
-Acquire::http::Proxy "http://<host>:3142";
-
-
 set static ethernet ip addresses (10.10.10.1 for front and 10.10.10.2 for back) in /etc/dhcpcd.conf
-also request a specific ip address for usb0 so that the webui is parked in a known location and the default route gets set up for usb0
+also set wlan0 to a lower metric than usb0 so that mobile data isn't used when not necessary
 
-interface usb0
-request 192.168.42.42
+interface wlan0
+metric 100
 
 
 run `sudo apt update` and `sudo apt upgrade` and then install packages
@@ -58,6 +53,7 @@ in /etc/default/gpsd add /dev/ttyACM0 to devices and -n to options
 in /etc/ntp.conf add the following:
 server 127.127.28.0 prefer
 fudge 127.127.28.0 time1 0.075 refid GPS
+(also comment out the default pool addresses)
 
 (beetle-back only)
 sudo apt install minicom
@@ -105,17 +101,32 @@ sudo reboot
 
 
 
-On home pi that serves public webui:
+On home server that hosts public webui:
 
-add pi to www-data group and change group ownership of /var/www/html to www-data
-sudo usermod -a -G www-data pi
-sudo chown -R www-data /var/www/html
-sudo chgrp -R www-data /var/www/html
-sudo chmod -R 775 /var/www/html
+sudo mkdir /var/www/html/beetle
+sudo chown <user> /var/www/html/beetle
+sudo chgrp <user> /var/www/html/beetle
 
-copy py and web files onto pi (can use install.sh)
+copy py and web files onto server (can use install.sh)
 
 add crontab entry:
 @reboot /var/www/html/beetle/beetle_state.py &
+
+set up auth file for nginx to use
+https://docs.nginx.com/nginx/admin-guide/security-controls/configuring-http-basic-authentication/
+
+add these sections to /etc/nginx/sites-available/default
+
+	location /beetle {
+		root /var/www/html;
+		auth_basic "Super Secret Stuff";
+		auth_basic_user_file /var/www/html/.htpasswd;
+	}
+
+	location /beetle/rest/ {
+		proxy_pass http://localhost:5000/;
+		auth_basic "Super Secret Stuff";
+		auth_basic_user_file /var/www/html/.htpasswd;
+	}
 
 sudo reboot

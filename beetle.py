@@ -378,16 +378,21 @@ class State:
 
     def phone_home_thread_func(self):
         home_url = 'https://housejohns.com/beetle/rest/state'
+        with open('/home/pi/home_user', 'r') as fin:
+            home_user = fin.read()
+        with open('/home/pi/home_pass', 'r') as fin:
+            home_pass = fin.read()
         while True:
             try:
-                r = requests.post(home_url, json=self.state)
+                r = requests.post(home_url, json=self.state,
+                    auth=requests.auth.HTTPBasicAuth(home_user, home_pass))
                 if r.status_code != 200:
                     self.beetle.logger.error('phone home got status '
                                              'code %d' % r.status_code)
             except requests.exceptions.RequestException as e:
                 self.beetle.logger.error('phone home failed due '
                                          'to %s' % type(e).__name__)
-            time.sleep(300)
+            time.sleep(60)
 
     def poll(self):
         now = int(time.time())
