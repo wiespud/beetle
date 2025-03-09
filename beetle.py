@@ -33,7 +33,7 @@ class ADC:
         self.ch = 1
         self.count = { 1 : 5, 2 : 3 }
         self.values = { 1 : [], 2 : [] }
-        self.adjust = { 1 : (3.31, 1.0), 2 : (1.0, 0.0) }
+        self.adjust = { 1 : (3.31, 0.5), 2 : (1.0, 0.0) }
         self.setup_and_start()
         self.beetle.logger.info('ADC poller initialized')
 
@@ -458,6 +458,7 @@ class Beetle:
         self.pollers.append(self.state)
         self.bms = bms.BatteryMonitoringSystem(self)
         self.pollers.append(self.bms)
+
         self.gpio = Gpio(self)
         self.pollers.append(self.gpio)
         if location == 'back':
